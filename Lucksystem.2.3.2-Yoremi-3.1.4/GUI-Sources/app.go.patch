@@ -1,0 +1,357 @@
+--- /home/claude/app.go.original	2026-04-14 11:26:33.265909527 +0000
++++ /home/claude/app.go	2026-04-14 11:29:42.525843678 +0000
+@@ -948,9 +948,18 @@
+ // Supported line types:
+ //   MESSAGE(...)  — dialogue lines (all LuckEngine games)
+ //   LOG_BEGIN(...) — log/title entries (e.g. AIR, CLANNAD)
++//   SELECT(...)   — in-game choice options (Kanon and others)
+ //
+-// Each line contains N quoted strings = N language columns.
+-// The user picks columns by number (Lang 1, Lang 2, ...).
++// Each MESSAGE/LOG_BEGIN line contains N quoted strings = N language columns.
++// SELECT lines contain N choices × M languages quoted strings, grouped per
++// choice (e.g. SELECT(var, "JP1","EN1","CN1", "JP2","EN2","CN2", ...)). They
++// are split into one TSV row per choice with composite IDs (seqID.choiceIdx).
++//
++// Lines may be prefixed by a "labelN: " marker (e.g. "label22: SELECT (...)")
++// which is stripped before recognition.
++//
++// The user picks columns by number (Lang 1, Lang 2, ...). For SELECT, max(col)
++// is used as numLangs to compute per-choice positions.
+ // Column assignment varies by game — user must verify.
+ 
+ // DialogueFormatInfo is returned by DialogueDetectFormat
+@@ -959,19 +968,66 @@
+ 	MaxCols  int    `json:"maxCols"`
+ }
+ 
+-// isDialogueLine returns true if the line starts with MESSAGE or LOG_BEGIN.
++// stripLabelPrefix removes an optional "labelN: " (or "labelXX: ") prefix
++// from a trimmed line and returns the remainder. Returns the original line
++// if no label prefix is present.
++func stripLabelPrefix(trimmed string) string {
++	// Match: ^label[0-9]+:\s*
++	if !strings.HasPrefix(trimmed, "label") {
++		return trimmed
++	}
++	rest := trimmed[len("label"):]
++	// Consume digits
++	i := 0
++	for i < len(rest) && rest[i] >= '0' && rest[i] <= '9' {
++		i++
++	}
++	if i == 0 || i >= len(rest) || rest[i] != ':' {
++		return trimmed
++	}
++	rest = rest[i+1:]
++	// Consume optional whitespace
++	rest = strings.TrimLeft(rest, " \t")
++	return rest
++}
++
++// isDialogueLine returns true if the line (after optional label prefix
++// stripping) starts with MESSAGE, LOG_BEGIN, or SELECT.
+ func isDialogueLine(trimmed string) bool {
+-	return strings.HasPrefix(trimmed, "MESSAGE") || strings.HasPrefix(trimmed, "LOG_BEGIN")
++	rest := stripLabelPrefix(trimmed)
++	return strings.HasPrefix(rest, "MESSAGE") ||
++		strings.HasPrefix(rest, "LOG_BEGIN") ||
++		strings.HasPrefix(rest, "SELECT")
+ }
+ 
+-// lineTag returns "MESSAGE" or "LOG_BEGIN" for tagging in the TSV ID column.
++// lineTag returns "MESSAGE", "LOG_BEGIN", or "SELECT" for tagging in the TSV.
+ func lineTag(trimmed string) string {
+-	if strings.HasPrefix(trimmed, "LOG_BEGIN") {
++	rest := stripLabelPrefix(trimmed)
++	if strings.HasPrefix(rest, "LOG_BEGIN") {
+ 		return "LOG_BEGIN"
+ 	}
++	if strings.HasPrefix(rest, "SELECT") {
++		return "SELECT"
++	}
+ 	return "MESSAGE"
+ }
+ 
++// isSelectLine returns true if the line (after label stripping) is a SELECT.
++func isSelectLine(trimmed string) bool {
++	return strings.HasPrefix(stripLabelPrefix(trimmed), "SELECT")
++}
++
++// maxInt returns the maximum value in a slice of ints, or 0 if empty.
++func maxInt(xs []int) int {
++	m := 0
++	for _, x := range xs {
++		if x > m {
++			m = x
++		}
++	}
++	return m
++}
++
+ // DialogueDetectFormat reads a decompiled script and detects the format.
+ // Scans MESSAGE and LOG_BEGIN lines, counts max quoted strings.
+ func (a *App) DialogueDetectFormat(scriptFile string) DialogueFormatInfo {
+@@ -992,27 +1048,32 @@
+ 	maxQuotes := 0
+ 	msgCount := 0
+ 	logCount := 0
++	selCount := 0
+ 	for _, line := range lines {
+ 		trimmed := strings.TrimSpace(line)
+ 		if !isDialogueLine(trimmed) {
+ 			continue
+ 		}
+-		if strings.HasPrefix(trimmed, "LOG_BEGIN") {
++		rest := stripLabelPrefix(trimmed)
++		switch {
++		case strings.HasPrefix(rest, "LOG_BEGIN"):
+ 			logCount++
+-		} else {
++		case strings.HasPrefix(rest, "SELECT"):
++			selCount++
++		default:
+ 			msgCount++
+ 		}
+ 		quotes := len(extractQuotedStrings(trimmed))
+ 		if quotes > maxQuotes {
+ 			maxQuotes = quotes
+ 		}
+-		if msgCount+logCount >= 50 {
++		if msgCount+logCount+selCount >= 50 {
+ 			break
+ 		}
+ 	}
+ 
+-	if msgCount+logCount == 0 {
+-		result.Format = "No MESSAGE / LOG_BEGIN found"
++	if msgCount+logCount+selCount == 0 {
++		result.Format = "No MESSAGE / LOG_BEGIN / SELECT found"
+ 		return result
+ 	}
+ 
+@@ -1029,6 +1090,9 @@
+ 	if logCount > 0 {
+ 		parts = append(parts, fmt.Sprintf("%d LOG_BEGIN", logCount))
+ 	}
++	if selCount > 0 {
++		parts = append(parts, fmt.Sprintf("%d SELECT", selCount))
++	}
+ 	result.Format = fmt.Sprintf("%d columns detected (%s sampled)", maxQuotes, strings.Join(parts, " + "))
+ 
+ 	return result
+@@ -1165,6 +1229,11 @@
+ 
+ // extractDialoguesFromFile does the actual extraction work.
+ // cols contains 1-based column indices (e.g. [1, 2] for Lang 1 and Lang 2).
++//
++// MESSAGE / LOG_BEGIN: 1 line → 1 TSV row (ID = seqID), one Lang col per col.
++// SELECT: 1 line → N TSV rows (ID = "seqID.choiceIdx"), where N = totalQuoted /
++// numLangs and numLangs = max(cols). Each choice's per-lang strings come from
++// positions [choiceIdx*numLangs + (col-1)] in the line.
+ func (a *App) extractDialoguesFromFile(inputFile, outputFile string, cols []int) (int, error) {
+ 	data, err := os.ReadFile(inputFile)
+ 	if err != nil {
+@@ -1181,6 +1250,11 @@
+ 	}
+ 	sb.WriteString("\n")
+ 
++	numLangs := maxInt(cols)
++	if numLangs < 1 {
++		numLangs = 1
++	}
++
+ 	count := 0
+ 	seqID := 0 // sequential ID for stable matching
+ 	for _, line := range lines {
+@@ -1193,6 +1267,34 @@
+ 		tag := lineTag(trimmed)
+ 		quoted := extractQuotedStrings(trimmed)
+ 
++		if tag == "SELECT" {
++			// Split into one row per choice. numChoices = len(quoted) / numLangs.
++			if len(quoted) == 0 {
++				continue
++			}
++			numChoices := len(quoted) / numLangs
++			if numChoices < 1 {
++				numChoices = 1
++			}
++			for c := 0; c < numChoices; c++ {
++				sb.WriteString(fmt.Sprintf("%d.%d\t%s", seqID, c, tag))
++				for _, col := range cols {
++					sb.WriteString("\t")
++					idx := c*numLangs + (col - 1)
++					if idx >= 0 && idx < len(quoted) {
++						text := strings.ReplaceAll(quoted[idx], "\t", "\\t")
++						text = strings.ReplaceAll(text, "\n", "\\n")
++						text = strings.ReplaceAll(text, "\r", "")
++						sb.WriteString(text)
++					}
++				}
++				sb.WriteString("\n")
++				count++
++			}
++			continue
++		}
++
++		// MESSAGE / LOG_BEGIN: single row
+ 		sb.WriteString(fmt.Sprintf("%d\t%s", seqID, tag))
+ 		for _, col := range cols {
+ 			sb.WriteString("\t")
+@@ -1316,8 +1418,16 @@
+ }
+ 
+ // importDialoguesToFile does the actual import work.
+-// It reads the TSV, builds a map of seqID→translated text, then replaces
+-// the corresponding quoted string in each MESSAGE/LOG_BEGIN line of the script.
++// It reads the TSV, builds maps of ID→translated text, then replaces the
++// corresponding quoted string(s) in each MESSAGE/LOG_BEGIN/SELECT line.
++//
++// MESSAGE / LOG_BEGIN: TSV ID is the seqID. Replaces quoted string at
++// position (targetCol-1).
++//
++// SELECT: TSV ID is "seqID.choiceIdx". For each choice, replaces quoted
++// string at position (choiceIdx*numLangs + (targetCol-1)). numLangs is
++// inferred from the max "Lang N" header in the TSV; falls back to targetCol.
++//
+ // targetCol is 1-based: Lang 1 = replace quoted string #0, Lang 2 = #1, etc.
+ func (a *App) importDialoguesToFile(scriptFile, tsvFile string, targetCol int, outputFile string) (int, error) {
+ 	// --- Read TSV ---
+@@ -1368,8 +1478,27 @@
+ 		return 0, fmt.Errorf("column '%s' not found in TSV header: %v", targetHeader, header)
+ 	}
+ 
+-	// Build map: sequential_ID → translated text
++	// Infer numLangs from the TSV header itself. Count "Lang N" columns and
++	// take the max N seen. Falls back to targetCol if none found.
++	numLangs := 0
++	for _, col := range header {
++		var n int
++		if _, err := fmt.Sscanf(strings.TrimSpace(col), "Lang %d", &n); err == nil {
++			if n > numLangs {
++				numLangs = n
++			}
++		}
++	}
++	if numLangs < 1 {
++		numLangs = targetCol
++	}
++
++	// Build maps:
++	//   translations[id]              = text  (for MESSAGE/LOG_BEGIN)
++	//   selectChoices[id][choiceIdx]  = text  (for SELECT, composite IDs)
+ 	translations := make(map[int]string)
++	selectChoices := make(map[int]map[int]string)
++
+ 	for _, tsvLine := range tsvLines[1:] {
+ 		tsvLine = strings.TrimSpace(tsvLine)
+ 		if tsvLine == "" {
+@@ -1379,19 +1508,37 @@
+ 		if len(tsvCols) <= targetTsvCol {
+ 			continue
+ 		}
+-		// First column is the sequential ID
+ 		idStr := strings.TrimSpace(tsvCols[0])
++		text := tsvCols[targetTsvCol]
++		text = strings.ReplaceAll(text, "\\t", "\t")
++		text = strings.ReplaceAll(text, "\\n", "\n")
++		if text == "" {
++			continue
++		}
++
++		// Composite ID? "seqID.choiceIdx"
++		if dot := strings.Index(idStr, "."); dot >= 0 {
++			id := 0
++			cIdx := 0
++			fmt.Sscanf(idStr[:dot], "%d", &id)
++			fmt.Sscanf(idStr[dot+1:], "%d", &cIdx)
++			if id <= 0 {
++				continue
++			}
++			if selectChoices[id] == nil {
++				selectChoices[id] = make(map[int]string)
++			}
++			selectChoices[id][cIdx] = text
++			continue
++		}
++
++		// Plain ID
+ 		id := 0
+ 		fmt.Sscanf(idStr, "%d", &id)
+ 		if id <= 0 {
+ 			continue
+ 		}
+-		text := tsvCols[targetTsvCol]
+-		text = strings.ReplaceAll(text, "\\t", "\t")
+-		text = strings.ReplaceAll(text, "\\n", "\n")
+-		if text != "" {
+-			translations[id] = text
+-		}
++		translations[id] = text
+ 	}
+ 
+ 	// --- Read script and replace ---
+@@ -1400,7 +1547,7 @@
+ 		return 0, fmt.Errorf("cannot read script: %v", err)
+ 	}
+ 
+-	replaceIdx := targetCol - 1 // 1-based to 0-based
++	replaceIdx := targetCol - 1 // 1-based to 0-based for MESSAGE/LOG_BEGIN
+ 
+ 	scriptLines := strings.Split(string(scriptData), "\n")
+ 	count := 0
+@@ -1413,11 +1560,52 @@
+ 		}
+ 
+ 		seqID++
++
++		if isSelectLine(trimmed) {
++			choices, ok := selectChoices[seqID]
++			if !ok || len(choices) == 0 {
++				continue
++			}
++			// Apply replacements in ascending choiceIdx so successive
++			// replaceNthQuotedString calls compose correctly on the same line.
++			keys := make([]int, 0, len(choices))
++			for k := range choices {
++				keys = append(keys, k)
++			}
++			// simple in-place sort
++			for a := 0; a < len(keys); a++ {
++				for b := a + 1; b < len(keys); b++ {
++					if keys[b] < keys[a] {
++						keys[a], keys[b] = keys[b], keys[a]
++					}
++				}
++			}
++			currentLine := line
++			anyReplaced := false
++			for _, c := range keys {
++				newText := choices[c]
++				if newText == "" {
++					continue
++				}
++				pos := c*numLangs + replaceIdx
++				replaced := replaceNthQuotedString(currentLine, pos, newText)
++				if replaced != currentLine {
++					currentLine = replaced
++					anyReplaced = true
++				}
++			}
++			if anyReplaced {
++				scriptLines[i] = currentLine
++				count++
++			}
++			continue
++		}
++
++		// MESSAGE / LOG_BEGIN
+ 		newText, ok := translations[seqID]
+ 		if !ok || newText == "" {
+ 			continue
+ 		}
+-
+ 		replaced := replaceNthQuotedString(line, replaceIdx, newText)
+ 		if replaced != line {
+ 			scriptLines[i] = replaced

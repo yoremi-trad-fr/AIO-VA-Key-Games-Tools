@@ -8,4 +8,4 @@ The versions of these software programmes are:
 -Siglus Tools 0.61
 -Rldev- fork 2026
 
-Lucksystem is already coded in Go and has a GUI (wrapper), which will serve as the basis for the project. I have started porting Siglus, and Rldev, which is natively coded in Ocaml, remains. I have started porting Siglus, and Rldev, which is natively coded in Ocaml, remains.
+Lucksystem is already coded in Go and has a GUI (wrapper), which will serve as the basis for the project. I have started porting Siglus, and Rldev, which is natively coded in Ocaml, remains.
