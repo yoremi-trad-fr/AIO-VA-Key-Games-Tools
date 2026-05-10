@@ -36,6 +36,7 @@
     RldevArchive,
     RldevList,
     RldevCompile,
+    RldevCompileBatch,
     RldevG00ToPng,
     RldevPngToG00,
     RldevGanToXml,
@@ -132,6 +133,8 @@
   let rldevSelectedOp = 'kprl_disasm';
   let rlSeenFile = '';
   let rlOrgFile = '';
+  let rlOrgDir = '';                 // batch input folder for compile
+  let rlCompileBatch = false;        // batch mode toggle for compile
   let rlKfnFile = '';
   let rlGameexe = '';
   let rlOutputDir = '';
@@ -145,13 +148,17 @@
   let rlGanFile = '';
 
   // --- RLdev operations ---
+  // Numbered to reflect the natural translation workflow:
+  //   1. List the archive to see what's inside
+  //   2. Extract scripts to .org / .utf for translation
+  //   3. Compile each translated .org back to .TXT
+  //   4. Pack the .TXT files back into a SEEN.txt archive
   const rldevOperations = [
-    { id: '_rs1', label: 'KPRL', section: true },
-    { id: 'kprl_disasm', label: 'Extract SEEN.txt' },
-    { id: 'kprl_archive', label: 'Create Archive' },
-    { id: 'kprl_list', label: 'List Archive' },
-    { id: '_rs2', label: 'RLC', section: true },
-    { id: 'rlc_compile', label: 'Compile .org' },
+    { id: '_rs1', label: 'KPRL / RLC', section: true },
+    { id: 'kprl_list',    label: '1 — List SEEN.txt archive' },
+    { id: 'kprl_disasm',  label: '2 — Extract SEEN.txt' },
+    { id: 'rlc_compile',  label: '3 — Compile .org / .ke' },
+    { id: 'kprl_archive', label: '4 — Compile SEEN.txt' },
     { id: '_rs3', label: 'IMAGE (G00)', section: true },
     { id: 'g00_extract', label: 'G00 → PNG' },
     { id: 'g00_import', label: 'PNG → G00' },
@@ -420,7 +427,15 @@
 
   // ===== RLdev browse helpers =====
   async function browseRlSeen() { const f = await SelectFile('Select SEEN.txt', '*.txt;*.TXT', 'SEEN archives'); if (f) rlSeenFile = f; }
-  async function browseRlOrg() { const f = await SelectFile('Select .org file', '*.org', 'Kepago scripts'); if (f) rlOrgFile = f; }
+  async function browseRlOrg() {
+    if (rlCompileBatch) {
+      const d = await SelectDirectory('Select folder with .org / .ke files');
+      if (d) rlOrgDir = d;
+    } else {
+      const f = await SelectFile('Select .org / .ke file', '*.org;*.ke', 'Kepago scripts');
+      if (f) rlOrgFile = f;
+    }
+  }
   async function browseRlKfn() { const f = await SelectFile('Select .kfn file', '*.kfn', 'KFN files'); if (f) rlKfnFile = f; }
   async function browseRlGameexe() { const f = await SelectFile('Select gameexe.ini', '*.ini;*.INI', 'INI files'); if (f) rlGameexe = f; }
   async function browseRlOutputDir() { const d = await SelectDirectory('Select output directory'); if (d) rlOutputDir = d; }
@@ -433,7 +448,14 @@
   function startRlExtract() { run(() => RldevExtract(rlSeenFile, rlOutputDir)); }
   function startRlArchive() { run(() => RldevArchive(rlSeenFile, rlOutputDir)); }
   function startRlList() { run(() => RldevList(rlSeenFile)); }
-  function startRlCompile() { run(() => RldevCompile(rlOrgFile, rlKfnFile, rlGameexe, rlEncoding, rlTransform, rlOutputDir, rlForceTransform)); }
+  function startRlCompile() {
+    if (rlCompileBatch) {
+      run(() => RldevCompileBatch(rlOrgDir, rlKfnFile, rlGameexe, rlEncoding, rlTransform, rlOutputDir, rlForceTransform));
+    } else {
+      run(() => RldevCompile(rlOrgFile, rlKfnFile, rlGameexe, rlEncoding, rlTransform, rlOutputDir, rlForceTransform));
+    }
+  }
+  function toggleCompileBatch() { rlOrgFile = ''; rlOrgDir = ''; }
   function startG00Extract() { run(() => RldevG00ToPng(rlG00File, rlOutputDir)); }
   function startG00Import() { run(() => RldevPngToG00(rlPngFile, rlOutputDir)); }
   function startGanToXml() { run(() => RldevGanToXml(rlGanFile, rlOutputDir)); }
@@ -568,17 +590,16 @@
       <div class="form-panel">
         <!-- KPRL EXTRACT (disassemble) -->
         {#if rldevSelectedOp === 'kprl_disasm'}
-          <div class="form-title">Extract SEEN.txt</div>
+          <div class="form-title">2 — Extract SEEN.txt</div>
           <div class="form-hint" style="margin-bottom:10px">Extrait et désassemble une archive SEEN.txt en scripts Kepago (.org + .utf/.sjs)</div>
           <div class="form-group"><label>SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeen}>Select</button></div></div>
           <div class="form-group"><label>Encodage sortie :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8 (recommandé)</option><option value="CP932">CP932 / Shift-JIS</option></select></div></div>
-          <div class="form-group"><label>Game ID :</label><div class="form-row"><select bind:value={rlGameId}><option value="LB">LB (default)</option><option value="CLAN">CLANNAD</option><option value="FIVE">CLANNAD FV</option><option value="LBEX">LB! EX</option><option value="SNOW">Snow</option></select></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlDisasm} disabled={!rlSeenFile || !rlOutputDir}>Start Extract</button>{/if}</div>
 
-        <!-- KPRL ARCHIVE -->
+        <!-- KPRL ARCHIVE (pack into SEEN.txt) -->
         {:else if rldevSelectedOp === 'kprl_archive'}
-          <div class="form-title">Create Archive</div>
+          <div class="form-title">4 — Compile SEEN.txt</div>
           <div class="form-hint" style="margin-bottom:10px">Assemble des fichiers .TXT compilés dans un SEEN.txt</div>
           <div class="form-group"><label>Input folder (*.TXT) :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
           <div class="form-group"><label>Output SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeen}>Select</button></div></div>
@@ -586,21 +607,30 @@
 
         <!-- KPRL LIST -->
         {:else if rldevSelectedOp === 'kprl_list'}
-          <div class="form-title">List Archive Contents</div>
+          <div class="form-title">1 — List SEEN.txt archive</div>
           <div class="form-group"><label>SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeen}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlList} disabled={!rlSeenFile}>List Contents</button>{/if}</div>
 
         <!-- RLC COMPILE -->
         {:else if rldevSelectedOp === 'rlc_compile'}
-          <div class="form-title">Compile .org → .TXT</div>
-          <div class="form-hint" style="margin-bottom:10px">Compile un script Kepago (.org) en bytecode RealLive (.TXT)</div>
-          <div class="form-group"><label>Script .org :</label><div class="form-row"><input type="text" bind:value={rlOrgFile} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
+          <div class="form-title">3 — Compile .org / .ke → .TXT</div>
+          <div class="form-hint" style="margin-bottom:10px">Compile un script Kepago (.org / .ke) en bytecode RealLive (.TXT). En mode batch, tous les .org/.ke du dossier sont compilés en boucle (équivalent des .bat / .sh d'origine).</div>
+          <div class="form-group">
+            <div class="form-row checkbox-row">
+              <label class="checkbox-label"><input type="checkbox" bind:checked={rlCompileBatch} on:change={toggleCompileBatch} /> Batch mode (entire folder)</label>
+            </div>
+          </div>
+          {#if rlCompileBatch}
+            <div class="form-group"><label>Input folder (.org/.ke) :</label><div class="form-row"><input type="text" bind:value={rlOrgDir} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
+          {:else}
+            <div class="form-group"><label>Script .org / .ke :</label><div class="form-row"><input type="text" bind:value={rlOrgFile} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
+          {/if}
           <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
           <div class="form-group"><label>GAMEEXE.INI (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlGameexe} readonly /><button class="btn" on:click={browseRlGameexe}>Select</button></div></div>
-          <div class="form-group"><label>Encodage :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932</option></select></div></div>
+          <div class="form-group"><label>Encodage :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8 (Tomoyo, AIR Steam, …)</option><option value="CP932">CP932 / Shift-JIS (Clannad)</option></select></div></div>
           <div class="form-group"><label>Transform (-x) :</label><div class="form-row"><select bind:value={rlTransform}><option value="">None</option><option value="CP1252">CP1252 (Western)</option><option value="CP936">CP936 (Chinese)</option><option value="CP949">CP949 (Korean)</option></select><label class="checkbox-label" style="margin-left:8px"><input type="checkbox" bind:checked={rlForceTransform} /> Force</label></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={!rlOrgFile || !rlOutputDir}>Start Compile</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={(rlCompileBatch ? !rlOrgDir : !rlOrgFile) || !rlOutputDir}>Start Compile</button>{/if}</div>
 
         <!-- G00 EXTRACT -->
         {:else if rldevSelectedOp === 'g00_extract'}

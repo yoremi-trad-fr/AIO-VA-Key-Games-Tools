@@ -1762,6 +1762,117 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, encoding, transform, outpu
 	return ""
 }
 
+// ═══════════════════════════════════════
+// RLDEV COMPILE BATCH (directory)
+// ═══════════════════════════════════════
+// For each .org or .ke in inputDir, compiles to .TXT in outputDir.
+// Mirrors the old shell scripts:
+//
+//   Clannad (Shift-JIS):
+//     rlc -o SEENxxxx -d outdir -e cp932 -i gameexe.ini SEENxxxx.ke
+//
+//   Tomoyo / Western (UTF-8):
+//     rlc -x Western -o SEENxxxx -d outdir -i gameexe.ini SEENxxxx.org
+//     (encoding defaults to UTF-8 when -e is omitted)
+//
+// The output filename is derived from the input basename (without
+// extension), exactly like the original .bat / .sh scripts.
+
+func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, encoding, transform, outputDir string, forceTransform bool) string {
+	if inputDir == "" || outputDir == "" {
+		a.logError("Input and output directories are required")
+		return "ERROR"
+	}
+
+	a.log("════════════════════════════════════════")
+	a.log("  RLdev — COMPILE BATCH (.org/.ke → .TXT)")
+	a.log("════════════════════════════════════════")
+	a.log(fmt.Sprintf("Input:    %s", inputDir))
+	a.log(fmt.Sprintf("Output:   %s", outputDir))
+	a.log(fmt.Sprintf("Encoding: %s", encoding))
+	if transform != "" {
+		a.log(fmt.Sprintf("Transform: %s", transform))
+	}
+	a.log("────────────────────────────────────────")
+
+	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
+		a.logError(fmt.Sprintf("Cannot create output directory: %v", err))
+		return "ERROR"
+	}
+
+	// Auto-detect KFN once for the whole batch.
+	if kfnFile == "" {
+		kfnFile = a.findKFN()
+	}
+
+	entries, err := os.ReadDir(inputDir)
+	if err != nil {
+		a.logError(fmt.Sprintf("Cannot read directory: %v", err))
+		return "ERROR"
+	}
+
+	// Collect .org and .ke files, sort for deterministic order.
+	var sources []string
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext == ".org" || ext == ".ke" {
+			sources = append(sources, entry.Name())
+		}
+	}
+	sort.Strings(sources)
+
+	if len(sources) == 0 {
+		a.logError("No .org or .ke files found in input directory")
+		return "ERROR"
+	}
+
+	a.log(fmt.Sprintf("Found %d source file(s) to compile.", len(sources)))
+	a.log("────────────────────────────────────────")
+
+	count := 0
+	errors := 0
+	for i, name := range sources {
+		base := strings.TrimSuffix(name, filepath.Ext(name))
+		inFile := filepath.Join(inputDir, name)
+
+		a.log(fmt.Sprintf("  [%d/%d] %s ...", i+1, len(sources), name))
+
+		args := []string{"-v", "-e", encoding, "-d", outputDir, "-o", base}
+		if kfnFile != "" {
+			args = append(args, "-K", kfnFile)
+		}
+		if gameexe != "" {
+			args = append(args, "-i", gameexe)
+		}
+		if transform != "" {
+			args = append(args, "-x", transform)
+			if forceTransform {
+				args = append(args, "--force-transform")
+			}
+		}
+		args = append(args, inFile)
+
+		if err := a.runTool("rlc2026", args...); err != nil {
+			errors++
+			a.logError(fmt.Sprintf("    failed: %v", err))
+		} else {
+			count++
+		}
+	}
+
+	result := fmt.Sprintf("%d file(s) compiled, %d error(s)", count, errors)
+	if errors > 0 {
+		a.logError(result)
+	} else {
+		a.logOK(result)
+	}
+	a.log("════════════════════════════════════════")
+	return "OK: " + result
+}
+
 func (a *App) RldevG00ToPng(g00File, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — G00 → PNG")
