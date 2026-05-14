@@ -1731,7 +1731,7 @@ func (a *App) RldevList(seenFile string) string {
 	return ""
 }
 
-func (a *App) RldevCompile(orgFile, kfnFile, gameexe, encoding, transform, outputDir string, forceTransform bool) string {
+func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, transform, outputDir string, forceTransform bool) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Compile .org")
 	a.log("═══════════════════════════════════════")
@@ -1747,6 +1747,9 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, encoding, transform, outpu
 	}
 	if gameexe != "" {
 		args = append(args, "-i", gameexe)
+	}
+	if interpreter != "" {
+		args = append(args, "-I", interpreter)
 	}
 	if transform != "" {
 		args = append(args, "-x", transform)
@@ -1778,7 +1781,7 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, encoding, transform, outpu
 // The output filename is derived from the input basename (without
 // extension), exactly like the original .bat / .sh scripts.
 
-func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, encoding, transform, outputDir string, forceTransform bool) string {
+func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encoding, transform, outputDir string, forceTransform bool) string {
 	if inputDir == "" || outputDir == "" {
 		a.logError("Input and output directories are required")
 		return "ERROR"
@@ -1846,6 +1849,9 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, encoding, transform,
 		}
 		if gameexe != "" {
 			args = append(args, "-i", gameexe)
+		}
+		if interpreter != "" {
+			args = append(args, "-I", interpreter)
 		}
 		if transform != "" {
 			args = append(args, "-x", transform)
