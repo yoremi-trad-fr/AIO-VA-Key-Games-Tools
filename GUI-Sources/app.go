@@ -961,8 +961,8 @@ func (a *App) SelectSaveScriptFile(defaultName string) string {
 
 // DialogueFormatInfo is returned by DialogueDetectFormat
 type DialogueFormatInfo struct {
-	Format   string `json:"format"`
-	MaxCols  int    `json:"maxCols"`
+	Format  string `json:"format"`
+	MaxCols int    `json:"maxCols"`
 }
 
 // stripLabelPrefix removes an optional "labelN: " (or "labelXX: ") prefix
@@ -1013,8 +1013,6 @@ func lineTag(trimmed string) string {
 func isSelectLine(trimmed string) bool {
 	return strings.HasPrefix(stripLabelPrefix(trimmed), "SELECT")
 }
-
-
 
 // DialogueDetectFormat reads a decompiled script and detects the format.
 // Scans MESSAGE and LOG_BEGIN lines, counts max quoted strings.
@@ -1636,7 +1634,15 @@ func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameId, outputDir st
 	a.log("  RLdev — Extract SEEN.txt")
 	a.log("═══════════════════════════════════════")
 
-	// Auto-detect KFN if not specified
+	if err := required("SEEN.txt", seenFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	if encoding == "" {
+		encoding = "UTF-8"
+	}
 	if kfnFile == "" {
 		kfnFile = a.findKFN()
 	}
@@ -1648,7 +1654,7 @@ func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameId, outputDir st
 
 	args := []string{"-d", "-e", encoding, "-o", outputDir}
 	if kfnFile != "" {
-		args = append(args, "--kfn="+kfnFile)
+		args = append(args, "-kfn", kfnFile)
 	}
 	if gameId != "" && gameId != "LB" {
 		args = append(args, "-G", gameId)
@@ -1676,17 +1682,49 @@ func (a *App) findKFN() string {
 			filepath.Join(exeDir, "lib", "reallive.kfn"),
 			filepath.Join(exeDir, "reallive.kfn"),
 		)
+		dir := exeDir
+		for i := 0; i < 4 && dir != ""; i++ {
+			candidates = append(candidates, filepath.Join(dir, "KFN", "reallive.kfn"))
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
 	}
 	rldev := os.Getenv("RLDEV")
 	if rldev != "" {
 		candidates = append(candidates,
 			filepath.Join(rldev, "lib", "reallive.kfn"),
+			filepath.Join(rldev, "reallive.kfn"),
 		)
 	}
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates, filepath.Join(wd, "KFN", "reallive.kfn"))
+	}
 	for _, c := range candidates {
-		if _, err := os.Stat(c); err == nil {
+		if info, err := os.Stat(c); err == nil && !info.IsDir() {
 			return c
 		}
+	}
+	return ""
+}
+
+func (a *App) DefaultKFN() string {
+	return a.findKFN()
+}
+
+func required(label string, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s is required", label)
+	}
+	return nil
+}
+
+func (a *App) failIf(err error) string {
+	if err != nil {
+		a.logError(err.Error())
+		return err.Error()
 	}
 	return ""
 }
@@ -1695,6 +1733,12 @@ func (a *App) RldevExtract(seenFile, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Extract SEEN.txt")
 	a.log("═══════════════════════════════════════")
+	if err := required("SEEN.txt", seenFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
 	if err := a.runTool("kprl16", "-x", "-o", outputDir, seenFile); err != nil {
 		return err.Error()
 	}
@@ -1706,9 +1750,25 @@ func (a *App) RldevArchive(outputSeen, inputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Create Archive")
 	a.log("═══════════════════════════════════════")
-	pattern := filepath.Join(inputDir, "*.TXT")
-	files, err := filepath.Glob(pattern)
-	if err != nil || len(files) == 0 {
+	if err := required("output SEEN.txt", outputSeen); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("input folder", inputDir); err != nil {
+		return a.failIf(err)
+	}
+	filesUpper, _ := filepath.Glob(filepath.Join(inputDir, "*.TXT"))
+	filesLower, _ := filepath.Glob(filepath.Join(inputDir, "*.txt"))
+	seen := map[string]bool{}
+	files := make([]string, 0, len(filesUpper)+len(filesLower))
+	for _, file := range append(filesUpper, filesLower...) {
+		key := strings.ToLower(file)
+		if !seen[key] {
+			seen[key] = true
+			files = append(files, file)
+		}
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
 		a.logError("No .TXT files found in " + inputDir)
 		return "no .TXT files found"
 	}
@@ -1725,37 +1785,55 @@ func (a *App) RldevList(seenFile string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — List Archive Contents")
 	a.log("═══════════════════════════════════════")
+	if err := required("SEEN.txt", seenFile); err != nil {
+		return a.failIf(err)
+	}
 	if err := a.runTool("kprl16", "-l", seenFile); err != nil {
 		return err.Error()
 	}
 	return ""
 }
 
-func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, transform, outputDir string, forceTransform bool) string {
+func appendTransformArgs(args []string, transform string, forceTransform bool) []string {
+	transform = strings.TrimSpace(transform)
+	if transform != "" && !strings.EqualFold(transform, "NONE") {
+		args = append(args, "-x", transform)
+	}
+	if forceTransform {
+		args = append(args, "--force-transform")
+	}
+	return args
+}
+
+func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, transform string, forceTransform bool, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Compile .org")
 	a.log("═══════════════════════════════════════")
 
-	// Auto-detect KFN if not specified
+	if err := required("script .org/.ke", orgFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	if encoding == "" {
+		encoding = "UTF-8"
+	}
 	if kfnFile == "" {
 		kfnFile = a.findKFN()
 	}
+	if err := required("KFN", kfnFile); err != nil {
+		return a.failIf(err)
+	}
 
 	args := []string{"-v", "-e", encoding, "-d", outputDir}
-	if kfnFile != "" {
-		args = append(args, "-K", kfnFile)
-	}
+	args = appendTransformArgs(args, transform, forceTransform)
+	args = append(args, "-K", kfnFile)
 	if gameexe != "" {
 		args = append(args, "-i", gameexe)
 	}
 	if interpreter != "" {
 		args = append(args, "-I", interpreter)
-	}
-	if transform != "" {
-		args = append(args, "-x", transform)
-		if forceTransform {
-			args = append(args, "--force-transform")
-		}
 	}
 	args = append(args, orgFile)
 	if err := a.runTool("rlc2026", args...); err != nil {
@@ -1781,15 +1859,19 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, tra
 // The output filename is derived from the input basename (without
 // extension), exactly like the original .bat / .sh scripts.
 
-func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encoding, transform, outputDir string, forceTransform bool) string {
-	if inputDir == "" || outputDir == "" {
-		a.logError("Input and output directories are required")
-		return "ERROR"
-	}
-
+func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encoding, transform string, forceTransform bool, outputDir string) string {
 	a.log("════════════════════════════════════════")
 	a.log("  RLdev — COMPILE BATCH (.org/.ke → .TXT)")
 	a.log("════════════════════════════════════════")
+	if err := required("input folder", inputDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	if encoding == "" {
+		encoding = "UTF-8"
+	}
 	a.log(fmt.Sprintf("Input:    %s", inputDir))
 	a.log(fmt.Sprintf("Output:   %s", outputDir))
 	a.log(fmt.Sprintf("Encoding: %s", encoding))
@@ -1803,9 +1885,11 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 		return "ERROR"
 	}
 
-	// Auto-detect KFN once for the whole batch.
 	if kfnFile == "" {
 		kfnFile = a.findKFN()
+	}
+	if err := required("KFN", kfnFile); err != nil {
+		return a.failIf(err)
 	}
 
 	entries, err := os.ReadDir(inputDir)
@@ -1844,20 +1928,13 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 		a.log(fmt.Sprintf("  [%d/%d] %s ...", i+1, len(sources), name))
 
 		args := []string{"-v", "-e", encoding, "-d", outputDir, "-o", base}
-		if kfnFile != "" {
-			args = append(args, "-K", kfnFile)
-		}
+		args = appendTransformArgs(args, transform, forceTransform)
+		args = append(args, "-K", kfnFile)
 		if gameexe != "" {
 			args = append(args, "-i", gameexe)
 		}
 		if interpreter != "" {
 			args = append(args, "-I", interpreter)
-		}
-		if transform != "" {
-			args = append(args, "-x", transform)
-			if forceTransform {
-				args = append(args, "--force-transform")
-			}
 		}
 		args = append(args, inFile)
 
@@ -1883,6 +1960,12 @@ func (a *App) RldevG00ToPng(g00File, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — G00 → PNG")
 	a.log("═══════════════════════════════════════")
+	if err := required("G00 file", g00File); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
 	if err := a.runTool("vaconv", "-v", "-d", outputDir, g00File); err != nil {
 		return err.Error()
 	}
@@ -1894,6 +1977,12 @@ func (a *App) RldevPngToG00(pngFile, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — PNG → G00")
 	a.log("═══════════════════════════════════════")
+	if err := required("PNG file", pngFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
 	base := strings.TrimSuffix(filepath.Base(pngFile), filepath.Ext(pngFile))
 	outFile := filepath.Join(outputDir, base+".g00")
 	if err := a.runTool("vaconv", "-v", "-o", outFile, "-i", "png", pngFile); err != nil {
@@ -1907,10 +1996,18 @@ func (a *App) RldevGanToXml(ganFile, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — GAN → XML")
 	a.log("═══════════════════════════════════════")
-	if err := a.runTool("rlxml", "-v", "-d", outputDir, ganFile); err != nil {
+	if err := required("GAN file", ganFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	base := strings.TrimSuffix(filepath.Base(ganFile), filepath.Ext(ganFile))
+	outFile := filepath.Join(outputDir, base+".ganxml")
+	if err := a.runTool("rlxml", "-v", "-o", outFile, ganFile); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion complete: " + outFile)
 	return ""
 }
 
@@ -1918,9 +2015,17 @@ func (a *App) RldevXmlToGan(xmlFile, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — XML → GAN")
 	a.log("═══════════════════════════════════════")
-	if err := a.runTool("rlxml", "-v", "-d", outputDir, xmlFile); err != nil {
+	if err := required("GANXML file", xmlFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	base := strings.TrimSuffix(filepath.Base(xmlFile), filepath.Ext(xmlFile))
+	outFile := filepath.Join(outputDir, base+".gan")
+	if err := a.runTool("rlxml", "-v", "-o", outFile, xmlFile); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion complete: " + outFile)
 	return ""
 }

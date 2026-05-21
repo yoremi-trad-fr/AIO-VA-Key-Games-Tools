@@ -10,6 +10,7 @@
     SelectDirectory,
     SelectSaveFile,
     StopProcess,
+    DefaultKFN,
     ScriptDecompile,
     ScriptCompile,
     PakExtract,
@@ -142,8 +143,8 @@
   let rlEncoding = 'UTF-8';
   let rlTargetVersion = '';
   let rlGameId = 'LB';
-  let rlTransform = '';
-  let rlForceTransform = false;
+  let rlTransform = 'WESTERN';
+  let rlForceTransform = true;
   let rlG00File = '';
   let rlPngFile = '';
   let rlGanFile = '';
@@ -159,7 +160,8 @@
     { id: 'kprl_list',    label: '1 — List SEEN.txt archive' },
     { id: 'kprl_disasm',  label: '2 — Extract SEEN.txt' },
     { id: 'rlc_compile',  label: '3 — Compile .org / .ke' },
-    { id: 'kprl_archive', label: '4 — Compile SEEN.txt' },
+    { id: 'kprl_archive', label: '4 — Rebuild SEEN.txt' },
+    { id: 'kprl_extract', label: 'Advanced: extract bytecode' },
     { id: '_rs3', label: 'IMAGE (G00)', section: true },
     { id: 'g00_extract', label: 'G00 → PNG' },
     { id: 'g00_import', label: 'PNG → G00' },
@@ -208,6 +210,7 @@
     let cls = '';
     if (text.includes('[OK]')) cls = 'line-ok';
     else if (text.includes('[ERROR]') || text.includes('Panic') || text.includes('Error')) cls = 'line-err';
+    else if (text.includes('Warning')) cls = 'line-warn';
     else if (text.startsWith('═') || text.startsWith('─')) cls = 'line-sep';
     else if (text.startsWith('>')) cls = 'line-cmd';
     pendingLines.push({ text, cls });
@@ -219,8 +222,7 @@
     if (pendingLines.length > 0) {
       consoleLines = [...consoleLines, ...pendingLines];
       pendingLines = [];
-      // Cap at 2000 lines to prevent memory bloat
-      if (consoleLines.length > 2000) consoleLines = consoleLines.slice(-1500);
+      if (consoleLines.length > 12000) consoleLines = consoleLines.slice(-10000);
       tick().then(() => { if (consoleEl) consoleEl.scrollTop = consoleEl.scrollHeight; });
     }
     flushTimer = null;
@@ -243,6 +245,11 @@
       addLine('Place lucksystem.exe next to the GUI, or click "Locate" below.');
     }
     addLine('Ready.');
+    const kfn = await DefaultKFN();
+    if (kfn && !rlKfnFile) {
+      rlKfnFile = kfn;
+      addLine('KFN détecté : ' + kfn);
+    }
   });
   onDestroy(() => { EventsOff('log'); });
 
@@ -453,9 +460,9 @@
   function startRlList() { run(() => RldevList(rlSeenFile)); }
   function startRlCompile() {
     if (rlCompileBatch) {
-      run(() => RldevCompileBatch(rlOrgDir, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlTransform, rlOutputDir, rlForceTransform));
+      run(() => RldevCompileBatch(rlOrgDir, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlTransform, rlForceTransform, rlOutputDir));
     } else {
-      run(() => RldevCompile(rlOrgFile, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlTransform, rlOutputDir, rlForceTransform));
+      run(() => RldevCompile(rlOrgFile, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlTransform, rlForceTransform, rlOutputDir));
     }
   }
   function toggleCompileBatch() { rlOrgFile = ''; rlOrgDir = ''; }
@@ -594,19 +601,28 @@
         <!-- KPRL EXTRACT (disassemble) -->
         {#if rldevSelectedOp === 'kprl_disasm'}
           <div class="form-title">2 — Extract SEEN.txt</div>
-          <div class="form-hint" style="margin-bottom:10px">Extrait et désassemble une archive SEEN.txt en scripts Kepago (.org + .utf/.sjs)</div>
+          <div class="form-hint" style="margin-bottom:10px">Désassemble une archive SEEN.txt en scripts Kepago (.org + .utf/.sjs).</div>
           <div class="form-group"><label>SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeen}>Select</button></div></div>
-          <div class="form-group"><label>Encodage sortie :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8 (recommandé)</option><option value="CP932">CP932 / Shift-JIS</option></select></div></div>
+          <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly placeholder="Auto : ./KFN/reallive.kfn" /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
+          <div class="form-group"><label>Encodage sortie :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932 / Shift-JIS</option><option value="EUC-JP">EUC-JP</option></select></div></div>
+          <div class="form-group"><label>Game ID (-G, optionnel) :</label><div class="form-row"><input type="text" bind:value={rlGameId} placeholder="ex: CLANNAD, KANON, AIR..." /></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlDisasm} disabled={!rlSeenFile || !rlOutputDir}>Start Extract</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlDisasm} disabled={!rlSeenFile || !rlKfnFile || !rlOutputDir}>Start Extract</button>{/if}</div>
+
+        {:else if rldevSelectedOp === 'kprl_extract'}
+          <div class="form-title">Advanced: extract bytecode</div>
+          <div class="form-hint" style="margin-bottom:10px">Décompresse/décrypte les scénarios en fichiers .rl, sans produire de scripts .org.</div>
+          <div class="form-group"><label>SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeen}>Select</button></div></div>
+          <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlExtract} disabled={!rlSeenFile || !rlOutputDir}>Extract</button>{/if}</div>
 
         <!-- KPRL ARCHIVE (pack into SEEN.txt) -->
         {:else if rldevSelectedOp === 'kprl_archive'}
-          <div class="form-title">4 — Compile SEEN.txt</div>
-          <div class="form-hint" style="margin-bottom:10px">Assemble des fichiers .TXT compilés dans un SEEN.txt</div>
+          <div class="form-title">4 — Rebuild SEEN.txt</div>
+          <div class="form-hint" style="margin-bottom:10px">Assemble des fichiers .TXT compilés dans une archive SEEN.txt.</div>
           <div class="form-group"><label>Input folder (*.TXT) :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
           <div class="form-group"><label>Output SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeenSave}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlArchive} disabled={!rlSeenFile || !rlOutputDir}>Start Archive</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlArchive} disabled={!rlSeenFile || !rlOutputDir}>Rebuild Archive</button>{/if}</div>
 
         <!-- KPRL LIST -->
         {:else if rldevSelectedOp === 'kprl_list'}
@@ -631,10 +647,11 @@
           <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
           <div class="form-group"><label>GAMEEXE.INI (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlGameexe} readonly /><button class="btn" on:click={browseRlGameexe}>Select</button></div></div>
           <div class="form-group"><label>RealLive.exe (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlInterpreter} readonly /><button class="btn" on:click={browseRlInterpreter}>Select</button></div><div class="form-hint">Détecte la version PE de l'interprète (marker kidoku @/!, filtrage overloads KFN). Sinon auto-détecté à côté du .org.</div></div>
-          <div class="form-group"><label>Encodage :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8 (Tomoyo, AIR Steam, …)</option><option value="CP932">CP932 / Shift-JIS (Clannad)</option></select></div></div>
-          <div class="form-group"><label>Transform (-x) :</label><div class="form-row"><select bind:value={rlTransform}><option value="">None</option><option value="CP1252">CP1252 (Western)</option><option value="CP936">CP936 (Chinese)</option><option value="CP949">CP949 (Korean)</option></select><label class="checkbox-label" style="margin-left:8px"><input type="checkbox" bind:checked={rlForceTransform} /> Force</label></div></div>
+          <div class="form-group"><label>Encodage source :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932 / Shift-JIS</option><option value="EUC-JP">EUC-JP</option></select></div></div>
+          <div class="form-group"><label>Transformation sortie :</label><div class="form-row"><select bind:value={rlTransform}><option value="WESTERN">WESTERN / CP1252</option><option value="NONE">NONE / Japonais</option><option value="CHINESE">CHINESE</option><option value="KOREAN">KOREAN</option></select></div></div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlForceTransform} /> Force transform</label></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={(rlCompileBatch ? !rlOrgDir : !rlOrgFile) || !rlOutputDir}>Start Compile</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={(rlCompileBatch ? !rlOrgDir : !rlOrgFile) || !rlKfnFile || !rlOutputDir}>Start Compile</button>{/if}</div>
 
         <!-- G00 EXTRACT -->
         {:else if rldevSelectedOp === 'g00_extract'}
