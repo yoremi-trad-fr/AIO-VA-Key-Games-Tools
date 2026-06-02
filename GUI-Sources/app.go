@@ -1629,7 +1629,7 @@ func (a *App) runTool(toolName string, args ...string) error {
 // RLdev 2026 — Backend methods
 // ─────────────────────────────────────────────────────────────
 
-func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameId, outputDir string) string {
+func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameId string, debugInfo bool, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Extract SEEN.txt")
 	a.log("═══════════════════════════════════════")
@@ -1652,12 +1652,16 @@ func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameId, outputDir st
 		a.log("Warning: reallive.kfn not found — opcodes will be raw")
 	}
 
-	args := []string{"-d", "-e", encoding, "-o", outputDir}
+	args := []string{"-d", "-v", "1", "-e", encoding, "-o", outputDir}
 	if kfnFile != "" {
 		args = append(args, "-kfn", kfnFile)
 	}
-	if gameId != "" && gameId != "LB" {
+	if gameId != "" {
 		args = append(args, "-G", gameId)
+	}
+	if debugInfo {
+		args = append(args, "-g")
+		a.log("Sources debug RealLive: yes (-g / #line)")
 	}
 	args = append(args, seenFile)
 
@@ -1729,6 +1733,61 @@ func (a *App) failIf(err error) string {
 	return ""
 }
 
+var realLiveInterpreterCandidates = []string{
+	"RealLive.exe",
+	"RealLiveEn.exe",
+	"Kinetic.exe",
+	"kinetic.exe",
+	"AVG2000.exe",
+	"avg2000.exe",
+	"SiglusEngine.exe",
+	"siglusengine.exe",
+	"SiglusEngine_Steam.exe",
+	"siglusengine_steam.exe",
+	"reallive.exe",
+}
+
+func findInterpreterInDir(dir string) string {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return ""
+	}
+	for _, name := range realLiveInterpreterCandidates {
+		path := filepath.Join(dir, name)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path
+		}
+	}
+	return ""
+}
+
+func (a *App) resolveInterpreter(gameexe, interpreter string) string {
+	interpreter = strings.TrimSpace(interpreter)
+	if interpreter != "" {
+		return interpreter
+	}
+
+	gameexe = strings.TrimSpace(gameexe)
+	if gameexe == "" {
+		return ""
+	}
+
+	dir := gameexe
+	if info, err := os.Stat(gameexe); err == nil {
+		if !info.IsDir() {
+			dir = filepath.Dir(gameexe)
+		}
+	} else if filepath.Ext(gameexe) != "" {
+		dir = filepath.Dir(gameexe)
+	}
+
+	if found := findInterpreterInDir(dir); found != "" {
+		a.logOK("Interpreteur detecte: " + found)
+		return found
+	}
+	return ""
+}
+
 func (a *App) RldevExtract(seenFile, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Extract SEEN.txt")
@@ -1746,7 +1805,7 @@ func (a *App) RldevExtract(seenFile, outputDir string) string {
 	return ""
 }
 
-func (a *App) RldevArchive(outputSeen, inputDir string) string {
+func (a *App) RldevArchive(outputSeen, inputDir, templateSeen string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Create Archive")
 	a.log("═══════════════════════════════════════")
@@ -1756,23 +1815,29 @@ func (a *App) RldevArchive(outputSeen, inputDir string) string {
 	if err := required("input folder", inputDir); err != nil {
 		return a.failIf(err)
 	}
-	filesUpper, _ := filepath.Glob(filepath.Join(inputDir, "*.TXT"))
-	filesLower, _ := filepath.Glob(filepath.Join(inputDir, "*.txt"))
 	seen := map[string]bool{}
-	files := make([]string, 0, len(filesUpper)+len(filesLower))
-	for _, file := range append(filesUpper, filesLower...) {
-		key := strings.ToLower(file)
-		if !seen[key] {
-			seen[key] = true
-			files = append(files, file)
+	var files []string
+	for _, pattern := range []string{"*.TXT", "*.txt", "*.AVG", "*.avg"} {
+		matches, _ := filepath.Glob(filepath.Join(inputDir, pattern))
+		for _, file := range matches {
+			key := strings.ToLower(file)
+			if !seen[key] {
+				seen[key] = true
+				files = append(files, file)
+			}
 		}
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		a.logError("No .TXT files found in " + inputDir)
-		return "no .TXT files found"
+		a.logError("No .TXT or .avg files found in " + inputDir)
+		return "no .TXT or .avg files found"
 	}
-	args := []string{"-a", outputSeen}
+	args := []string{"-a"}
+	if strings.TrimSpace(templateSeen) != "" {
+		args = append(args, "-template", templateSeen)
+		a.log("Template SEEN.txt: " + templateSeen)
+	}
+	args = append(args, outputSeen)
 	args = append(args, files...)
 	if err := a.runTool("kprl16", args...); err != nil {
 		return err.Error()
@@ -1796,10 +1861,11 @@ func (a *App) RldevList(seenFile string) string {
 
 func appendTransformArgs(args []string, transform string, forceTransform bool) []string {
 	transform = strings.TrimSpace(transform)
-	if transform != "" && !strings.EqualFold(transform, "NONE") {
+	hasTransform := transform != "" && !strings.EqualFold(transform, "NONE")
+	if hasTransform {
 		args = append(args, "-x", transform)
 	}
-	if forceTransform {
+	if hasTransform && forceTransform {
 		args = append(args, "--force-transform")
 	}
 	return args
@@ -1810,12 +1876,21 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, tra
 	a.log("  RLdev — Compile .org")
 	a.log("═══════════════════════════════════════")
 
-	if err := required("script .org/.ke", orgFile); err != nil {
+	if err := required("script .org/.ke/.avg", orgFile); err != nil {
 		return a.failIf(err)
 	}
 	if err := required("output folder", outputDir); err != nil {
 		return a.failIf(err)
 	}
+
+	if isAVG32SourceFile(orgFile) {
+		if err := a.compileAVG32Source(orgFile, outputDir, transform, forceTransform); err != nil {
+			return err.Error()
+		}
+		a.logOK("AVG32 compilation complete.")
+		return ""
+	}
+
 	if encoding == "" {
 		encoding = "UTF-8"
 	}
@@ -1825,6 +1900,7 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, tra
 	if err := required("KFN", kfnFile); err != nil {
 		return a.failIf(err)
 	}
+	interpreter = a.resolveInterpreter(gameexe, interpreter)
 
 	args := []string{"-v", "-e", encoding, "-d", outputDir}
 	args = appendTransformArgs(args, transform, forceTransform)
@@ -1861,7 +1937,7 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, tra
 
 func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encoding, transform string, forceTransform bool, outputDir string) string {
 	a.log("════════════════════════════════════════")
-	a.log("  RLdev — COMPILE BATCH (.org/.ke → .TXT)")
+	a.log("  RLdev — COMPILE BATCH (.org/.ke/.avg → .TXT)")
 	a.log("════════════════════════════════════════")
 	if err := required("input folder", inputDir); err != nil {
 		return a.failIf(err)
@@ -1869,11 +1945,11 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 	if err := required("output folder", outputDir); err != nil {
 		return a.failIf(err)
 	}
+	a.log(fmt.Sprintf("Input:    %s", inputDir))
+	a.log(fmt.Sprintf("Output:   %s", outputDir))
 	if encoding == "" {
 		encoding = "UTF-8"
 	}
-	a.log(fmt.Sprintf("Input:    %s", inputDir))
-	a.log(fmt.Sprintf("Output:   %s", outputDir))
 	a.log(fmt.Sprintf("Encoding: %s", encoding))
 	if transform != "" {
 		a.log(fmt.Sprintf("Transform: %s", transform))
@@ -1885,35 +1961,41 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 		return "ERROR"
 	}
 
-	if kfnFile == "" {
-		kfnFile = a.findKFN()
-	}
-	if err := required("KFN", kfnFile); err != nil {
-		return a.failIf(err)
-	}
-
 	entries, err := os.ReadDir(inputDir)
 	if err != nil {
 		a.logError(fmt.Sprintf("Cannot read directory: %v", err))
 		return "ERROR"
 	}
 
-	// Collect .org and .ke files, sort for deterministic order.
+	// Collect .org, .ke and .avg files, sort for deterministic order.
 	var sources []string
+	hasKepago := false
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
 		ext := strings.ToLower(filepath.Ext(entry.Name()))
-		if ext == ".org" || ext == ".ke" {
+		if ext == ".org" || ext == ".ke" || ext == ".avg" {
 			sources = append(sources, entry.Name())
+			if ext == ".org" || ext == ".ke" {
+				hasKepago = true
+			}
 		}
 	}
 	sort.Strings(sources)
 
 	if len(sources) == 0 {
-		a.logError("No .org or .ke files found in input directory")
+		a.logError("No .org, .ke or .avg files found in input directory")
 		return "ERROR"
+	}
+	if hasKepago {
+		if kfnFile == "" {
+			kfnFile = a.findKFN()
+		}
+		if err := required("KFN", kfnFile); err != nil {
+			return a.failIf(err)
+		}
+		interpreter = a.resolveInterpreter(gameexe, interpreter)
 	}
 
 	a.log(fmt.Sprintf("Found %d source file(s) to compile.", len(sources)))
@@ -1926,6 +2008,16 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 		inFile := filepath.Join(inputDir, name)
 
 		a.log(fmt.Sprintf("  [%d/%d] %s ...", i+1, len(sources), name))
+
+		if isAVG32SourceFile(inFile) {
+			if err := a.compileAVG32Source(inFile, outputDir, transform, forceTransform); err != nil {
+				errors++
+				a.logError(fmt.Sprintf("    failed: %v", err))
+			} else {
+				count++
+			}
+			continue
+		}
 
 		args := []string{"-v", "-e", encoding, "-d", outputDir, "-o", base}
 		args = appendTransformArgs(args, transform, forceTransform)
@@ -1956,39 +2048,136 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 	return "OK: " + result
 }
 
-func (a *App) RldevG00ToPng(g00File, outputDir string) string {
+func isAVG32SourceFile(path string) bool {
+	return strings.EqualFold(filepath.Ext(path), ".avg")
+}
+
+func (a *App) compileAVG32Source(avgFile, outputDir, transform string, forceTransform bool) error {
+	args := []string{"-c", "-t", "AVG32", "-v", "1", "-o", outputDir}
+	args = appendKPRLTransformArgs(args, transform, forceTransform)
+	args = append(args, avgFile)
+	return a.runTool("kprl16", args...)
+}
+
+func appendKPRLTransformArgs(args []string, transform string, forceTransform bool) []string {
+	transform = strings.TrimSpace(transform)
+	hasTransform := transform != "" && !strings.EqualFold(transform, "NONE")
+	if hasTransform {
+		args = append(args, "-transform-output", transform)
+	}
+	if hasTransform && forceTransform {
+		args = append(args, "-force-transform")
+	}
+	return args
+}
+
+func g00BatchFiles(inputDir, ext string) ([]string, error) {
+	seen := map[string]bool{}
+	var files []string
+	for _, suffix := range []string{strings.ToLower(ext), strings.ToUpper(ext)} {
+		matches, err := filepath.Glob(filepath.Join(inputDir, "*"+suffix))
+		if err != nil {
+			return nil, err
+		}
+		for _, file := range matches {
+			if !seen[file] {
+				seen[file] = true
+				files = append(files, file)
+			}
+		}
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no %s files found in %s", ext, inputDir)
+	}
+	return files, nil
+}
+
+func appendG00MetadataArg(args []string, xmlPath string) []string {
+	xmlPath = strings.TrimSpace(xmlPath)
+	if xmlPath != "" {
+		args = append(args, "-m", xmlPath)
+	}
+	return args
+}
+
+func appendG00FormatArg(args []string, g00Format string) []string {
+	g00Format = strings.TrimSpace(g00Format)
+	if g00Format != "" && !strings.EqualFold(g00Format, "auto") {
+		args = append(args, "-g", g00Format)
+	}
+	return args
+}
+
+func (a *App) RldevG00ToPng(g00Input, outputDir, xmlPath string, batch bool) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — G00 → PNG")
 	a.log("═══════════════════════════════════════")
-	if err := required("G00 file", g00File); err != nil {
+	label := "G00 file"
+	if batch {
+		label = "G00 folder"
+	}
+	if err := required(label, g00Input); err != nil {
 		return a.failIf(err)
 	}
 	if err := required("output folder", outputDir); err != nil {
 		return a.failIf(err)
 	}
-	if err := a.runTool("vaconv", "-v", "-d", outputDir, g00File); err != nil {
+
+	args := []string{"-v", "-d", outputDir}
+	args = appendG00MetadataArg(args, xmlPath)
+	if batch {
+		files, err := g00BatchFiles(g00Input, ".g00")
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch G00: %d file(s)", len(files)))
+		args = append(args, files...)
+	} else {
+		args = append(args, g00Input)
+	}
+	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
 	a.logOK("Conversion complete.")
 	return ""
 }
 
-func (a *App) RldevPngToG00(pngFile, outputDir string) string {
+func (a *App) RldevPngToG00(pngInput, outputDir, xmlPath, g00Format string, batch bool) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — PNG → G00")
 	a.log("═══════════════════════════════════════")
-	if err := required("PNG file", pngFile); err != nil {
+	label := "PNG file"
+	if batch {
+		label = "PNG folder"
+	}
+	if err := required(label, pngInput); err != nil {
 		return a.failIf(err)
 	}
 	if err := required("output folder", outputDir); err != nil {
 		return a.failIf(err)
 	}
-	base := strings.TrimSuffix(filepath.Base(pngFile), filepath.Ext(pngFile))
-	outFile := filepath.Join(outputDir, base+".g00")
-	if err := a.runTool("vaconv", "-v", "-o", outFile, "-i", "png", pngFile); err != nil {
+
+	args := []string{"-v"}
+	args = appendG00FormatArg(args, g00Format)
+	args = appendG00MetadataArg(args, xmlPath)
+	if batch {
+		files, err := g00BatchFiles(pngInput, ".png")
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch PNG: %d file(s)", len(files)))
+		args = append(args, "-d", outputDir)
+		args = append(args, files...)
+	} else {
+		base := strings.TrimSuffix(filepath.Base(pngInput), filepath.Ext(pngInput))
+		outFile := filepath.Join(outputDir, base+".g00")
+		args = append(args, "-o", outFile, "-i", pngInput)
+	}
+	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete: " + outFile)
+	a.logOK("Conversion complete.")
 	return ""
 }
 

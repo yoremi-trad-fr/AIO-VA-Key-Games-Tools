@@ -70,8 +70,8 @@ export function PakReplace(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['PakReplace'](arg1, arg2, arg3, arg4);
 }
 
-export function RldevArchive(arg1, arg2) {
-  return window['go']['main']['App']['RldevArchive'](arg1, arg2);
+export function RldevArchive(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RldevArchive'](arg1, arg2, arg3);
 }
 
 export function RldevCompile(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
@@ -82,16 +82,16 @@ export function RldevCompileBatch(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8
   return window['go']['main']['App']['RldevCompileBatch'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }
 
-export function RldevDisassemble(arg1, arg2, arg3, arg4, arg5) {
-  return window['go']['main']['App']['RldevDisassemble'](arg1, arg2, arg3, arg4, arg5);
+export function RldevDisassemble(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['RldevDisassemble'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function RldevExtract(arg1, arg2) {
   return window['go']['main']['App']['RldevExtract'](arg1, arg2);
 }
 
-export function RldevG00ToPng(arg1, arg2) {
-  return window['go']['main']['App']['RldevG00ToPng'](arg1, arg2);
+export function RldevG00ToPng(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RldevG00ToPng'](arg1, arg2, arg3, arg4);
 }
 
 export function RldevGanToXml(arg1, arg2) {
@@ -102,8 +102,8 @@ export function RldevList(arg1) {
   return window['go']['main']['App']['RldevList'](arg1);
 }
 
-export function RldevPngToG00(arg1, arg2) {
-  return window['go']['main']['App']['RldevPngToG00'](arg1, arg2);
+export function RldevPngToG00(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RldevPngToG00'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function RldevXmlToGan(arg1, arg2) {

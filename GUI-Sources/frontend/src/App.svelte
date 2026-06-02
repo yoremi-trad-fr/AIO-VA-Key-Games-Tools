@@ -133,6 +133,7 @@
   // --- RLdev fields ---
   let rldevSelectedOp = 'kprl_disasm';
   let rlSeenFile = '';
+  let rlTemplateSeenFile = '';
   let rlOrgFile = '';
   let rlOrgDir = '';                 // batch input folder for compile
   let rlCompileBatch = false;        // batch mode toggle for compile
@@ -141,12 +142,19 @@
   let rlInterpreter = '';           // path to RealLive.exe (PE version)
   let rlOutputDir = '';
   let rlEncoding = 'UTF-8';
-  let rlTargetVersion = '';
-  let rlGameId = 'LB';
-  let rlTransform = 'WESTERN';
-  let rlForceTransform = true;
+  let rlOutputTransform = 'NONE';
+  let rlForceTransform = false;
+  let rlGameId = '';
+  let rlDebugInfo = false;
   let rlG00File = '';
+  let rlG00Dir = '';
+  let rlG00Batch = false;
+  let rlG00XmlPath = '';
   let rlPngFile = '';
+  let rlPngDir = '';
+  let rlPngBatch = false;
+  let rlPngXmlPath = '';
+  let rlG00Format = 'auto';
   let rlGanFile = '';
 
   // --- RLdev operations ---
@@ -159,7 +167,7 @@
     { id: '_rs1', label: 'KPRL / RLC', section: true },
     { id: 'kprl_list',    label: '1 — List SEEN.txt archive' },
     { id: 'kprl_disasm',  label: '2 — Extract SEEN.txt' },
-    { id: 'rlc_compile',  label: '3 — Compile .org / .ke' },
+    { id: 'rlc_compile',  label: '3 — Compile .org / .ke / .avg' },
     { id: 'kprl_archive', label: '4 — Rebuild SEEN.txt' },
     { id: 'kprl_extract', label: 'Advanced: extract bytecode' },
     { id: '_rs3', label: 'IMAGE (G00)', section: true },
@@ -233,7 +241,7 @@
     EventsOn('log', (msg) => addLine(msg));
     lsPath = await GetLuckSystemPath();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.1.8');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -244,6 +252,7 @@
       addLine('[ERROR] lucksystem.exe not found!');
       addLine('Place lucksystem.exe next to the GUI, or click "Locate" below.');
     }
+    addLine('RLdev 2026 - Go édition beta 2.9');
     addLine('Ready.');
     const kfn = await DefaultKFN();
     if (kfn && !rlKfnFile) {
@@ -436,38 +445,55 @@
   // ===== RLdev browse helpers =====
   async function browseRlSeen() { const f = await SelectFile('Select SEEN.txt', '*.txt;*.TXT', 'SEEN archives'); if (f) rlSeenFile = f; }
   async function browseRlSeenSave() { const f = await SelectSaveFile('Save SEEN.txt as', 'SEEN.TXT', '*.txt;*.TXT', 'SEEN archives'); if (f) rlSeenFile = f; }
+  async function browseRlTemplateSeen() { const f = await SelectFile('Select original/template SEEN.txt', '*.txt;*.TXT', 'SEEN archives'); if (f) rlTemplateSeenFile = f; }
   async function browseRlOrg() {
     if (rlCompileBatch) {
-      const d = await SelectDirectory('Select folder with .org / .ke files');
+      const d = await SelectDirectory('Select folder with .org / .ke / .avg files');
       if (d) rlOrgDir = d;
     } else {
-      const f = await SelectFile('Select .org / .ke file', '*.org;*.ke', 'Kepago scripts');
+      const f = await SelectFile('Select .org / .ke / .avg file', '*.org;*.ke;*.avg', 'RLdev scripts');
       if (f) rlOrgFile = f;
     }
   }
   async function browseRlKfn() { const f = await SelectFile('Select .kfn file', '*.kfn', 'KFN files'); if (f) rlKfnFile = f; }
-  async function browseRlGameexe() { const f = await SelectFile('Select gameexe.ini', '*.ini;*.INI', 'INI files'); if (f) rlGameexe = f; }
-  async function browseRlInterpreter() { const f = await SelectFile('Select RealLive.exe', '*.exe;*.EXE', 'RealLive interpreter'); if (f) rlInterpreter = f; }
+  async function browseRlGameexe() { const f = await SelectFile('Select GAMEEXE.INI', '*.ini;*.INI', 'INI files'); if (f) rlGameexe = f; }
+  async function browseRlInterpreter() { const f = await SelectFile('Select RealLive / Steam .exe', '*.exe;*.EXE', 'RealLive-compatible interpreter'); if (f) rlInterpreter = f; }
   async function browseRlOutputDir() { const d = await SelectDirectory('Select output directory'); if (d) rlOutputDir = d; }
-  async function browseRlG00() { const f = await SelectFile('Select .g00 file', '*.g00', 'G00 images'); if (f) rlG00File = f; }
-  async function browseRlPng() { const f = await SelectFile('Select .png file', '*.png', 'PNG images'); if (f) rlPngFile = f; }
+  async function browseRlG00() {
+    if (rlG00Batch) { const d = await SelectDirectory('Select folder with .g00 files'); if (d) rlG00Dir = d; }
+    else { const f = await SelectFile('Select .g00 file', '*.g00;*.G00', 'G00 images'); if (f) rlG00File = f; }
+  }
+  async function browseRlPng() {
+    if (rlPngBatch) { const d = await SelectDirectory('Select folder with .png files'); if (d) rlPngDir = d; }
+    else { const f = await SelectFile('Select .png file', '*.png;*.PNG', 'PNG images'); if (f) rlPngFile = f; }
+  }
+  async function browseRlG00Xml() {
+    if (rlG00Batch) { const d = await SelectDirectory('Select XML output folder'); if (d) rlG00XmlPath = d; }
+    else { const f = await SelectSaveFile('Save metadata XML as', 'image.xml', '*.xml;*.XML', 'G00 metadata XML'); if (f) rlG00XmlPath = f; }
+  }
+  async function browseRlPngXml() {
+    if (rlPngBatch) { const d = await SelectDirectory('Select folder with .xml metadata files'); if (d) rlPngXmlPath = d; }
+    else { const f = await SelectFile('Select .xml metadata file', '*.xml;*.XML', 'G00 metadata XML'); if (f) rlPngXmlPath = f; }
+  }
   async function browseRlGan() { const f = await SelectFile('Select .gan/.ganxml', '*.gan;*.ganxml', 'GAN files'); if (f) rlGanFile = f; }
 
   // ===== RLdev actions (call backend) =====
-  function startRlDisasm() { run(() => RldevDisassemble(rlSeenFile, rlKfnFile, rlEncoding, rlGameId, rlOutputDir)); }
+  function startRlDisasm() { run(() => RldevDisassemble(rlSeenFile, rlKfnFile, rlEncoding, rlGameId, rlDebugInfo, rlOutputDir)); }
   function startRlExtract() { run(() => RldevExtract(rlSeenFile, rlOutputDir)); }
-  function startRlArchive() { run(() => RldevArchive(rlSeenFile, rlOutputDir)); }
+  function startRlArchive() { run(() => RldevArchive(rlSeenFile, rlOutputDir, rlTemplateSeenFile)); }
   function startRlList() { run(() => RldevList(rlSeenFile)); }
   function startRlCompile() {
     if (rlCompileBatch) {
-      run(() => RldevCompileBatch(rlOrgDir, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlTransform, rlForceTransform, rlOutputDir));
+      run(() => RldevCompileBatch(rlOrgDir, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlOutputTransform, rlForceTransform, rlOutputDir));
     } else {
-      run(() => RldevCompile(rlOrgFile, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlTransform, rlForceTransform, rlOutputDir));
+      run(() => RldevCompile(rlOrgFile, rlKfnFile, rlGameexe, rlInterpreter, rlEncoding, rlOutputTransform, rlForceTransform, rlOutputDir));
     }
   }
   function toggleCompileBatch() { rlOrgFile = ''; rlOrgDir = ''; }
-  function startG00Extract() { run(() => RldevG00ToPng(rlG00File, rlOutputDir)); }
-  function startG00Import() { run(() => RldevPngToG00(rlPngFile, rlOutputDir)); }
+  function toggleG00Batch() { rlG00File = ''; rlG00Dir = ''; rlG00XmlPath = ''; }
+  function togglePngBatch() { rlPngFile = ''; rlPngDir = ''; rlPngXmlPath = ''; }
+  function startG00Extract() { run(() => RldevG00ToPng(rlG00Batch ? rlG00Dir : rlG00File, rlOutputDir, rlG00XmlPath, rlG00Batch)); }
+  function startG00Import() { run(() => RldevPngToG00(rlPngBatch ? rlPngDir : rlPngFile, rlOutputDir, rlPngXmlPath, rlG00Format, rlPngBatch)); }
   function startGanToXml() { run(() => RldevGanToXml(rlGanFile, rlOutputDir)); }
   function startGanFromXml() { run(() => RldevXmlToGan(rlGanFile, rlOutputDir)); }
 </script>
@@ -487,7 +513,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.1.8</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card hub-card-disabled" disabled>
@@ -497,8 +523,8 @@
         </button>
         <button class="hub-card" on:click={() => activeView = 'rldev'}>
           <div class="hub-card-title">RLdev 2026</div>
-          <div class="hub-card-ver">Fork Yoremi · Go port</div>
-          <div class="hub-card-desc">SEEN.txt, scripts Kepago, G00<br>for RealLive games</div>
+          <div class="hub-card-ver">Beta 2.9 · Go port</div>
+          <div class="hub-card-desc">SEEN.txt, Kepago/AVG32, G00<br>for RealLive games</div>
         </button>
       </div>
       <div class="hub-footer">
@@ -520,8 +546,8 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem</strong> — Scripts, PAK, fonts, images CZ (LuckEngine)<br>
-          <strong>RLdev 2026</strong> — SEEN.txt, Kepago, G00, GAN (RealLive)<br>
+          <strong>LuckSystem v3.1.8</strong> — Scripts, PAK, fonts, images CZ (LuckEngine)<br>
+          <strong>RLdev 2026 beta 2.9</strong> — SEEN.txt, Kepago, AVG32, G00, GAN (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine (à venir)<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
         </div>
@@ -579,7 +605,7 @@
   <!-- RLDEV 2026 -->
   {:else if activeView === 'rldev'}
     <div class="titlebar">
-      <span>RLdev 2026 — Fork Yoremi (Go port)</span>
+      <span>RLdev 2026 — Beta 2.9 (Go port)</span>
       <button class="titlebar-back" on:click={() => activeView = 'hub'}>← Retour</button>
     </div>
     <div class="content">
@@ -606,6 +632,7 @@
           <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly placeholder="Auto : ./KFN/reallive.kfn" /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
           <div class="form-group"><label>Encodage sortie :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932 / Shift-JIS</option><option value="EUC-JP">EUC-JP</option></select></div></div>
           <div class="form-group"><label>Game ID (-G, optionnel) :</label><div class="form-row"><input type="text" bind:value={rlGameId} placeholder="ex: CLANNAD, KANON, AIR..." /></div></div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlDebugInfo} /> Sources debug RealLive (-g / #line)</label></div><div class="form-hint">Pour F3/F5/O uniquement ; garder décoché pour les sources de traduction.</div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlDisasm} disabled={!rlSeenFile || !rlKfnFile || !rlOutputDir}>Start Extract</button>{/if}</div>
 
@@ -619,53 +646,69 @@
         <!-- KPRL ARCHIVE (pack into SEEN.txt) -->
         {:else if rldevSelectedOp === 'kprl_archive'}
           <div class="form-title">4 — Rebuild SEEN.txt</div>
-          <div class="form-hint" style="margin-bottom:10px">Assemble des fichiers .TXT compilés dans une archive SEEN.txt.</div>
-          <div class="form-group"><label>Input folder (*.TXT) :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
+          <div class="form-hint" style="margin-bottom:10px">Assemble des fichiers .TXT/.avg compilés dans une archive SEEN.txt.</div>
+          <div class="form-group"><label>Input folder (.TXT/.avg) :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
+          <div class="form-group"><label>Original/template SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlTemplateSeenFile} readonly placeholder="Optionnel, requis pour Clannad Steam" /><button class="btn" on:click={browseRlTemplateSeen}>Select</button></div></div>
           <div class="form-group"><label>Output SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeenSave}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlArchive} disabled={!rlSeenFile || !rlOutputDir}>Rebuild Archive</button>{/if}</div>
 
         <!-- KPRL LIST -->
         {:else if rldevSelectedOp === 'kprl_list'}
-          <div class="form-title">1 — List SEEN.txt archive</div>
+          <div class="form-title">1 — List SEEN.txt</div>
           <div class="form-group"><label>SEEN.txt :</label><div class="form-row"><input type="text" bind:value={rlSeenFile} readonly /><button class="btn" on:click={browseRlSeen}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlList} disabled={!rlSeenFile}>List Contents</button>{/if}</div>
 
         <!-- RLC COMPILE -->
         {:else if rldevSelectedOp === 'rlc_compile'}
-          <div class="form-title">3 — Compile .org / .ke → .TXT</div>
-          <div class="form-hint" style="margin-bottom:10px">Compile un script Kepago (.org / .ke) en bytecode RealLive (.TXT). En mode batch, tous les .org/.ke du dossier sont compilés en boucle (équivalent des .bat / .sh d'origine).</div>
+          <div class="form-title">3 — Compile .org / .ke / .avg → .TXT</div>
+          <div class="form-hint" style="margin-bottom:10px">Compile les scripts RealLive/Kepago ou AVG32 d'un dossier en mode batch.</div>
           <div class="form-group">
             <div class="form-row checkbox-row">
-              <label class="checkbox-label"><input type="checkbox" bind:checked={rlCompileBatch} on:change={toggleCompileBatch} /> Batch mode (entire folder)</label>
+              <label class="checkbox-label"><input type="checkbox" bind:checked={rlCompileBatch} on:change={toggleCompileBatch} /> Batch mode</label>
             </div>
           </div>
           {#if rlCompileBatch}
-            <div class="form-group"><label>Input folder (.org/.ke) :</label><div class="form-row"><input type="text" bind:value={rlOrgDir} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
+            <div class="form-group"><label>Input folder (.org/.ke/.avg) :</label><div class="form-row"><input type="text" bind:value={rlOrgDir} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
           {:else}
-            <div class="form-group"><label>Script .org / .ke :</label><div class="form-row"><input type="text" bind:value={rlOrgFile} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
+            <div class="form-group"><label>Script .org / .ke / .avg :</label><div class="form-row"><input type="text" bind:value={rlOrgFile} readonly /><button class="btn" on:click={browseRlOrg}>Select</button></div></div>
           {/if}
-          <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
+          <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly placeholder="Auto : ./KFN/reallive.kfn" /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
           <div class="form-group"><label>GAMEEXE.INI (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlGameexe} readonly /><button class="btn" on:click={browseRlGameexe}>Select</button></div></div>
-          <div class="form-group"><label>RealLive.exe (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlInterpreter} readonly /><button class="btn" on:click={browseRlInterpreter}>Select</button></div><div class="form-hint">Détecte la version PE de l'interprète (marker kidoku @/!, filtrage overloads KFN). Sinon auto-détecté à côté du .org.</div></div>
+          <div class="form-group"><label>Interpréteur RealLive / Steam (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlInterpreter} readonly /><button class="btn" on:click={browseRlInterpreter}>Select</button></div><div class="form-hint">Auto si GAMEEXE.INI pointe vers un dossier contenant RealLive.exe ou SiglusEngine_Steam.exe.</div></div>
           <div class="form-group"><label>Encodage source :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932 / Shift-JIS</option><option value="EUC-JP">EUC-JP</option></select></div></div>
-          <div class="form-group"><label>Transformation sortie :</label><div class="form-row"><select bind:value={rlTransform}><option value="WESTERN">WESTERN / CP1252</option><option value="NONE">NONE / Japonais</option><option value="CHINESE">CHINESE</option><option value="KOREAN">KOREAN</option></select></div></div>
+          <div class="form-group"><label>Transformation sortie :</label><div class="form-row"><select bind:value={rlOutputTransform}><option value="NONE">NONE / CP932 original</option><option value="WESTERN">WESTERN / CP1252</option><option value="CHINESE">CHINESE</option><option value="KOREAN">KOREAN</option></select></div></div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlForceTransform} /> Force transform</label></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={(rlCompileBatch ? !rlOrgDir : !rlOrgFile) || !rlKfnFile || !rlOutputDir}>Start Compile</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={(rlCompileBatch ? !rlOrgDir : !rlOrgFile) || !rlOutputDir}>Compile</button>{/if}</div>
 
         <!-- G00 EXTRACT -->
         {:else if rldevSelectedOp === 'g00_extract'}
           <div class="form-title">G00 → PNG</div>
-          <div class="form-group"><label>G00 file :</label><div class="form-row"><input type="text" bind:value={rlG00File} readonly /><button class="btn" on:click={browseRlG00}>Select</button></div></div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlG00Batch} on:change={toggleG00Batch} /> Batch mode</label></div></div>
+          {#if rlG00Batch}
+            <div class="form-group"><label>G00 folder :</label><div class="form-row"><input type="text" bind:value={rlG00Dir} readonly /><button class="btn" on:click={browseRlG00}>Select</button></div></div>
+            <div class="form-group"><label>XML folder (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlG00XmlPath} readonly placeholder="Auto : output folder" /><button class="btn" on:click={browseRlG00Xml}>Select</button></div></div>
+          {:else}
+            <div class="form-group"><label>G00 file :</label><div class="form-row"><input type="text" bind:value={rlG00File} readonly /><button class="btn" on:click={browseRlG00}>Select</button></div></div>
+            <div class="form-group"><label>XML file (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlG00XmlPath} readonly placeholder="Auto : same output basename" /><button class="btn" on:click={browseRlG00Xml}>Select</button></div></div>
+          {/if}
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startG00Extract} disabled={!rlG00File || !rlOutputDir}>Convert</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startG00Extract} disabled={(rlG00Batch ? !rlG00Dir : !rlG00File) || !rlOutputDir}>Convert</button>{/if}</div>
 
         <!-- G00 IMPORT -->
         {:else if rldevSelectedOp === 'g00_import'}
           <div class="form-title">PNG → G00</div>
-          <div class="form-group"><label>PNG file :</label><div class="form-row"><input type="text" bind:value={rlPngFile} readonly /><button class="btn" on:click={browseRlPng}>Select</button></div></div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlPngBatch} on:change={togglePngBatch} /> Batch mode</label></div></div>
+          {#if rlPngBatch}
+            <div class="form-group"><label>PNG folder :</label><div class="form-row"><input type="text" bind:value={rlPngDir} readonly /><button class="btn" on:click={browseRlPng}>Select</button></div></div>
+            <div class="form-group"><label>XML folder (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlPngXmlPath} readonly placeholder="Auto : same PNG folder" /><button class="btn" on:click={browseRlPngXml}>Select</button></div></div>
+          {:else}
+            <div class="form-group"><label>PNG file :</label><div class="form-row"><input type="text" bind:value={rlPngFile} readonly /><button class="btn" on:click={browseRlPng}>Select</button></div></div>
+            <div class="form-group"><label>XML file (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlPngXmlPath} readonly placeholder="Auto : same PNG basename" /><button class="btn" on:click={browseRlPngXml}>Select</button></div></div>
+          {/if}
+          <div class="form-group"><label>G00 format :</label><div class="form-row"><select bind:value={rlG00Format}><option value="auto">Auto</option><option value="0">v0 simple</option><option value="1">v1 compressed</option><option value="2">v2 regions/XML</option></select></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
-          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startG00Import} disabled={!rlPngFile || !rlOutputDir}>Convert</button>{/if}</div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startG00Import} disabled={(rlPngBatch ? !rlPngDir : !rlPngFile) || !rlOutputDir}>Convert</button>{/if}</div>
 
         <!-- GAN TO XML -->
         {:else if rldevSelectedOp === 'gan_to_xml'}
@@ -687,7 +730,7 @@
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
   <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3</span>
+    <span>LuckSystem 2.3.2 - Yoremi fork v3.1.8</span>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="titlebar-path" on:click={locateLuckSystem} title="Click to change">
         {#if lsPath}📁 {lsPath}{:else}⚠ lucksystem.exe not found - Click to locate{/if}
@@ -986,7 +1029,7 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.1.8</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
             Inclut des correctifs CZ (CZ1, CZ4), script, PAK, et une interface subprocess.
@@ -1001,7 +1044,7 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.1.8 GUI · Wails + Svelte</div>
         </div>
       {/if}
     </div>
