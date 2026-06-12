@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -1718,6 +1720,53 @@ func (a *App) DefaultKFN() string {
 	return a.findKFN()
 }
 
+func (a *App) DefaultBabelRoot() string {
+	var candidates []string
+	if wd, err := os.Getwd(); err == nil {
+		candidates = append(candidates,
+			filepath.Join(wd, "BABEL"),
+			filepath.Join(filepath.Dir(wd), "ResCODEX", "Rldev2026-go", "BABEL"),
+			filepath.Join(filepath.Dir(filepath.Dir(wd)), "ResCODEX", "Rldev2026-go", "BABEL"),
+		)
+	}
+
+	exePath, _ := os.Executable()
+	if exePath != "" {
+		dir := filepath.Dir(exePath)
+		for i := 0; i < 5 && dir != ""; i++ {
+			candidates = append(candidates,
+				filepath.Join(dir, "BABEL"),
+				filepath.Join(dir, "ResCODEX", "Rldev2026-go", "BABEL"),
+			)
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+
+	for _, candidate := range candidates {
+		if isBabelRoot(candidate) {
+			return candidate
+		}
+	}
+	return ""
+}
+
+func isBabelRoot(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	if info, err := os.Stat(filepath.Join(path, "rtl", "rlBabel.dll")); err != nil || info.IsDir() {
+		return false
+	}
+	if info, err := os.Stat(filepath.Join(path, "rtl", "rlBabelF.dll")); err != nil || info.IsDir() {
+		return false
+	}
+	return true
+}
+
 func required(label string, value string) error {
 	if strings.TrimSpace(value) == "" {
 		return fmt.Errorf("%s is required", label)
@@ -1871,7 +1920,7 @@ func appendTransformArgs(args []string, transform string, forceTransform bool) [
 	return args
 }
 
-func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, transform string, forceTransform bool, outputDir string) string {
+func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, targetVersion, encoding, transform string, forceTransform bool, outputDir string) string {
 	a.log("═══════════════════════════════════════")
 	a.log("  RLdev — Compile .org")
 	a.log("═══════════════════════════════════════")
@@ -1911,6 +1960,11 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, tra
 	if interpreter != "" {
 		args = append(args, "-I", interpreter)
 	}
+	targetVersion = strings.TrimSpace(targetVersion)
+	if targetVersion != "" {
+		args = append(args, "--target-version", targetVersion)
+		a.log("Version RealLive forced: " + targetVersion)
+	}
 	args = append(args, orgFile)
 	if err := a.runTool("rlc2026", args...); err != nil {
 		return err.Error()
@@ -1935,7 +1989,7 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, encoding, tra
 // The output filename is derived from the input basename (without
 // extension), exactly like the original .bat / .sh scripts.
 
-func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encoding, transform string, forceTransform bool, outputDir string) string {
+func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, targetVersion, encoding, transform string, forceTransform bool, outputDir string) string {
 	a.log("════════════════════════════════════════")
 	a.log("  RLdev — COMPILE BATCH (.org/.ke/.avg → .TXT)")
 	a.log("════════════════════════════════════════")
@@ -2028,6 +2082,10 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, encodin
 		if interpreter != "" {
 			args = append(args, "-I", interpreter)
 		}
+		targetVersion = strings.TrimSpace(targetVersion)
+		if targetVersion != "" {
+			args = append(args, "--target-version", targetVersion)
+		}
 		args = append(args, inFile)
 
 		if err := a.runTool("rlc2026", args...); err != nil {
@@ -2089,6 +2147,30 @@ func g00BatchFiles(inputDir, ext string) ([]string, error) {
 	sort.Strings(files)
 	if len(files) == 0 {
 		return nil, fmt.Errorf("no %s files found in %s", ext, inputDir)
+	}
+	return files, nil
+}
+
+func assetBatchFilesAny(inputDir string, exts ...string) ([]string, error) {
+	seen := map[string]bool{}
+	var files []string
+	for _, ext := range exts {
+		for _, suffix := range []string{strings.ToLower(ext), strings.ToUpper(ext)} {
+			matches, err := filepath.Glob(filepath.Join(inputDir, "*"+suffix))
+			if err != nil {
+				return nil, err
+			}
+			for _, file := range matches {
+				if !seen[file] {
+					seen[file] = true
+					files = append(files, file)
+				}
+			}
+		}
+	}
+	sort.Strings(files)
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no %s files found in %s", strings.Join(exts, "/"), inputDir)
 	}
 	return files, nil
 }
@@ -2217,4 +2299,299 @@ func (a *App) RldevXmlToGan(xmlFile, outputDir string) string {
 	}
 	a.logOK("Conversion complete: " + outFile)
 	return ""
+}
+
+func (a *App) RldevNwaToAudio(nwaInput, outputDir, audioFormat string, batch bool) string {
+	a.log("═══════════════════════════════════════")
+	a.log("  RLdev — NWA → audio")
+	a.log("═══════════════════════════════════════")
+	label := "NWA file"
+	if batch {
+		label = "NWA folder"
+	}
+	if err := required(label, nwaInput); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+
+	audioFormat = strings.TrimSpace(strings.ToLower(audioFormat))
+	if audioFormat == "" {
+		audioFormat = "mp3"
+	}
+
+	args := []string{"-v", "-audio", audioFormat, "-d", outputDir}
+	if batch {
+		files, err := g00BatchFiles(nwaInput, ".nwa")
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch NWA: %d file(s)", len(files)))
+		args = append(args, files...)
+	} else {
+		args = append(args, nwaInput)
+	}
+	if err := a.runTool("vaconv", args...); err != nil {
+		return err.Error()
+	}
+	a.logOK("Conversion complete.")
+	return ""
+}
+
+func (a *App) RldevDatToJson(datInput, outputDir string, batch bool) string {
+	a.log("═══════════════════════════════════════")
+	a.log("  RLdev — CGM/TCC → JSON")
+	a.log("═══════════════════════════════════════")
+	label := "CGM/TCC file"
+	if batch {
+		label = "CGM/TCC folder"
+	}
+	if err := required(label, datInput); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+
+	args := []string{"-v", "-d", outputDir}
+	if batch {
+		files, err := assetBatchFilesAny(datInput, ".cgm", ".tcc")
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch DAT: %d file(s)", len(files)))
+		args = append(args, files...)
+	} else {
+		args = append(args, datInput)
+	}
+	if err := a.runTool("vaconv", args...); err != nil {
+		return err.Error()
+	}
+	a.logOK("Conversion complete.")
+	return ""
+}
+
+func (a *App) RldevDatJsonToBinary(jsonInput, outputDir string, batch bool) string {
+	a.log("═══════════════════════════════════════")
+	a.log("  RLdev — JSON → CGM/TCC")
+	a.log("═══════════════════════════════════════")
+	label := "DAT JSON file"
+	if batch {
+		label = "DAT JSON folder"
+	}
+	if err := required(label, jsonInput); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+
+	args := []string{"-v", "-d", outputDir}
+	if batch {
+		files, err := g00BatchFiles(jsonInput, ".json")
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch JSON DAT: %d file(s)", len(files)))
+		args = append(args, files...)
+	} else {
+		args = append(args, jsonInput)
+	}
+	if err := a.runTool("vaconv", args...); err != nil {
+		return err.Error()
+	}
+	a.logOK("Conversion complete.")
+	return ""
+}
+
+func (a *App) RldevBabelPrepareRuntime(babelRoot, gameDir, version, dllMode, nameEnc string, updateGameexe bool) string {
+	a.log("═══════════════════════════════════════")
+	a.log("  RLdev — Babel runtime setup")
+	a.log("═══════════════════════════════════════")
+	if err := required("BABEL folder", babelRoot); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("game folder", gameDir); err != nil {
+		return a.failIf(err)
+	}
+	if !isBabelRoot(babelRoot) {
+		return a.failIf(fmt.Errorf("invalid BABEL folder: %s", babelRoot))
+	}
+	if info, err := os.Stat(gameDir); err != nil || !info.IsDir() {
+		return a.failIf(fmt.Errorf("invalid game folder: %s", gameDir))
+	}
+
+	version = strings.TrimSpace(version)
+	dllName := resolveBabelDLLName(version, dllMode)
+	srcDLL := filepath.Join(babelRoot, "rtl", dllName)
+	dstDLL := filepath.Join(gameDir, dllName)
+	if err := copyFile(srcDLL, dstDLL); err != nil {
+		return a.failIf(err)
+	}
+	a.logOK("DLL copied: " + dstDLL)
+
+	if version != "" {
+		mapSrc := filepath.Join(babelRoot, "rtl", version+".map")
+		if info, err := os.Stat(mapSrc); err == nil && !info.IsDir() {
+			mapDst := filepath.Join(gameDir, version+".map")
+			if err := copyFile(mapSrc, mapDst); err != nil {
+				return a.failIf(err)
+			}
+			a.logOK("Map copied: " + mapDst)
+		} else {
+			a.log("Map not found for " + version + " (use rlbabel-genmap if this version is not bundled in the DLL).")
+		}
+	}
+
+	if updateGameexe {
+		gameexe := filepath.Join(gameDir, "GAMEEXE.INI")
+		if err := updateBabelGameexe(gameexe, dllName, nameEnc); err != nil {
+			return a.failIf(err)
+		}
+		a.logOK("GAMEEXE.INI updated: " + gameexe)
+	} else {
+		a.log("GAMEEXE.INI left untouched.")
+	}
+
+	if dllName == "rlBabelF.dll" {
+		a.log("Note: rlBabelF is for older RealLive 1.2.x; load it at startup with LoadDLL(0, 'rlBabelF') or via rlcInit().")
+	} else {
+		a.log("Note: RealLive 1.2.5+ expects GAMEEXE to contain a #DLL.xxx = \"rlBabel\" line.")
+	}
+	a.logOK("Babel runtime setup complete.")
+	return ""
+}
+
+func (a *App) RldevBabelWriteHeader(outputDir string, enableGlosses bool) string {
+	a.log("═══════════════════════════════════════")
+	a.log("  RLdev — Babel global.kh helper")
+	a.log("═══════════════════════════════════════")
+	if err := required("output folder", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return a.failIf(err)
+	}
+
+	var b strings.Builder
+	b.WriteString("{- RLdev 2026 Babel helper -}\r\n")
+	b.WriteString("#define __DynamicLineation__ = 1\r\n")
+	if enableGlosses {
+		b.WriteString("#define __EnableGlosses__\r\n")
+	}
+	b.WriteString("#load 'rlBabel'\r\n")
+	path := filepath.Join(outputDir, "global.kh")
+	if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {
+		return a.failIf(err)
+	}
+	a.logOK("Header created: " + path)
+	a.log("Copy these lines at the beginning of the script to test, or into the project common header.")
+	return ""
+}
+
+func resolveBabelDLLName(version, dllMode string) string {
+	mode := strings.ToLower(strings.TrimSpace(dllMode))
+	switch mode {
+	case "old", "rlbabelf", "rlbabelf.dll":
+		return "rlBabelF.dll"
+	case "new", "rlbabel", "rlbabel.dll":
+		return "rlBabel.dll"
+	}
+	if babelVersionBefore125(version) {
+		return "rlBabelF.dll"
+	}
+	return "rlBabel.dll"
+}
+
+func babelVersionBefore125(version string) bool {
+	parts := strings.Split(strings.TrimSpace(version), ".")
+	if len(parts) < 3 {
+		return false
+	}
+	nums := make([]int, 4)
+	for i := 0; i < len(nums) && i < len(parts); i++ {
+		fmt.Sscanf(parts[i], "%d", &nums[i])
+	}
+	if nums[0] != 1 {
+		return false
+	}
+	if nums[1] < 2 {
+		return true
+	}
+	if nums[1] > 2 {
+		return false
+	}
+	return nums[2] < 5
+}
+
+func copyFile(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
+}
+
+func updateBabelGameexe(path, dllName, nameEnc string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	backup := path + ".babel-" + time.Now().Format("20060102-150405") + ".bak"
+	if err := os.WriteFile(backup, data, 0644); err != nil {
+		return err
+	}
+	text := string(data)
+	if dllName == "rlBabel.dll" && !regexp.MustCompile(`(?im)^#DLL\.\d{3}\s*=\s*"rlBabel"\s*$`).MatchString(text) {
+		next := nextDLLSlot(text)
+		text = appendGameexeLine(text, fmt.Sprintf("#DLL.%03d = \"rlBabel\"", next))
+	}
+	if encLine, ok := babelNameEncLine(nameEnc); ok {
+		re := regexp.MustCompile(`(?im)^#NAME_ENC\s*=.*$`)
+		if re.MatchString(text) {
+			text = re.ReplaceAllString(text, encLine)
+		} else {
+			text = appendGameexeLine(text, encLine)
+		}
+	}
+	return os.WriteFile(path, []byte(text), 0644)
+}
+
+func nextDLLSlot(text string) int {
+	re := regexp.MustCompile(`(?im)^#DLL\.(\d{3})\s*=`)
+	matches := re.FindAllStringSubmatch(text, -1)
+	maxSlot := -1
+	for _, m := range matches {
+		var slot int
+		if _, err := fmt.Sscanf(m[1], "%d", &slot); err == nil && slot > maxSlot {
+			maxSlot = slot
+		}
+	}
+	return maxSlot + 1
+}
+
+func appendGameexeLine(text, line string) string {
+	if text != "" && !strings.HasSuffix(text, "\n") && !strings.HasSuffix(text, "\r") {
+		text += "\r\n"
+	}
+	return text + line + "\r\n"
+}
+
+func babelNameEncLine(nameEnc string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(nameEnc)) {
+	case "", "none":
+		return "", false
+	case "chinese", "1":
+		return "#NAME_ENC = 1", true
+	case "western", "2":
+		return "#NAME_ENC = 2", true
+	case "korean", "3":
+		return "#NAME_ENC = 3", true
+	default:
+		return "", false
+	}
 }
