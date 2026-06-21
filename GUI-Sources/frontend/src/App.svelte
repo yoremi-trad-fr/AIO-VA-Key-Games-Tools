@@ -28,6 +28,7 @@
     DialogueExtractBatch,
     DialogueImportFile,
     DialogueImportBatch,
+    VietnameseFontPatch,
     SelectScriptTxtFile,
     SelectTsvFile,
     SelectSaveTsvFile,
@@ -39,6 +40,8 @@
     DefaultBabelRoot,
     RldevCompile,
     RldevCompileBatch,
+    RldevOrgTextExport,
+    RldevOrgTextImport,
     RldevG00ToPng,
     RldevPngToG00,
     RldevGanToXml,
@@ -47,7 +50,8 @@
     RldevDatToJson,
     RldevDatJsonToBinary,
     RldevBabelPrepareRuntime,
-    RldevBabelWriteHeader
+    RldevBabelWriteHeader,
+    DetectRealLiveVersion
   } from '../wailsjs/go/main/App.js';
 
   // ===== State =====
@@ -106,6 +110,21 @@
   let fontEditMode = 'append'; // 'redraw' | 'append' | 'insert'
   let fontEditIndex = 0;
 
+  // --- Vietnamese Font Patch ---
+  let vietFontRoot = '';
+  let vietCharsetFile = '';
+  let vietTtfFile = '';
+  let vietOutputDir = '';
+  let vietSlot = 'en';
+  let vietFamily = 'GOTHIC1';
+  let vietYMinus2 = false;
+  let vietYMinus1 = false;
+  let vietY0 = false;
+  let vietY1 = false;
+  let vietY2 = true;
+  let vietY3 = false;
+  let vietRedrawLatin = false;
+
   // --- Image Export ---
   let imgExpBatch = false;
   let imgExpInput = '';
@@ -143,10 +162,17 @@
   let rlOrgFile = '';
   let rlOrgDir = '';                 // batch input folder for compile
   let rlCompileBatch = false;        // batch mode toggle for compile
+  let rlOrgTextMode = 'export';
+  let rlOrgTextBatch = false;
+  let rlOrgTextFile = '';
+  let rlOrgTextDir = '';
+  let rlOrgTextUtfFile = '';
+  let rlOrgTextUtfDir = '';
   let rlKfnFile = '';
   let rlGameexe = '';
   let rlInterpreter = '';           // path to RealLive.exe (PE version)
   let rlTargetVersion = '';
+  let rlTargetVersionAuto = false;
   let rlOutputDir = '';
   let rlEncoding = 'UTF-8';
   let rlOutputTransform = 'NONE';
@@ -192,6 +218,7 @@
     { id: 'kprl_list',    label: '1 — List SEEN.txt archive' },
     { id: 'kprl_disasm',  label: '2 — Extract SEEN.txt' },
     { id: 'rlc_compile',  label: '3 — Compile .org / .ke / .avg' },
+    { id: 'rlc_org_text', label: 'Extract text ORG' },
     { id: 'kprl_archive', label: '4 — Rebuild SEEN.txt' },
     { id: 'kprl_extract', label: 'Advanced: extract bytecode' },
     { id: '_rs3', label: 'IMAGE (G00)', section: true },
@@ -248,6 +275,8 @@
     { id: '_s3', label: 'FONT', section: true },
     { id: 'font_extract', label: 'Font Extract' },
     { id: 'font_edit', label: 'Font Edit' },
+    { id: '_s3b', label: 'VIET FONT', section: true },
+    { id: 'viet_font_patch', label: 'AIR / SG Patch' },
     { id: '_s4', label: 'IMAGE', section: true },
     { id: 'image_export', label: 'Image Export' },
     { id: 'image_import', label: 'Image Import' },
@@ -297,7 +326,7 @@
     EventsOn('log', (msg) => addLine(msg));
     lsPath = await GetLuckSystemPath();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3.1.8');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.20 GUI');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -308,7 +337,7 @@
       addLine('[ERROR] lucksystem.exe not found!');
       addLine('Place lucksystem.exe next to the GUI, or click "Locate" below.');
     }
-    addLine('RLdev 2026 - Go edition v1');
+    addLine('RLdev 2026 - Go édition v1.3');
     addLine('Ready.');
     const kfn = await DefaultKFN();
     if (kfn && !rlKfnFile) {
@@ -362,6 +391,11 @@
   async function browseFontEditOutCz() { const d = await SelectDirectory('Dossier de sortie pour le CZ modifié'); if (d) fontEditOutCz = d + '\\'; }
   async function browseFontEditOutInfo() { const d = await SelectDirectory('Dossier de sortie pour le fichier info'); if (d) fontEditOutInfo = d + '\\'; }
   async function browseFontEditCharset() { const f = await SelectFile('Select charset file', '*.txt', 'Text files'); if (f) fontEditCharsetFile = f; }
+
+  async function browseVietFontRoot() { const d = await SelectDirectory('Select AIR / Planetarian SG files folder'); if (d) vietFontRoot = d; }
+  async function browseVietCharset() { const f = await SelectFile('Select full Vietnamese charset (134 chars)', '*.txt', 'Text files'); if (f) vietCharsetFile = f; }
+  async function browseVietTtf() { const f = await SelectFile('Select Vietnamese-capable TTF/OTF', '*.ttf;*.otf', 'Font files'); if (f) vietTtfFile = f; }
+  async function browseVietOutput() { const d = await SelectDirectory('Select output folder'); if (d) vietOutputDir = d; }
 
   async function browseImgExpInput() {
     if (imgExpBatch) { const d = await SelectDirectory('Select CZ folder'); if (d) imgExpInput = d; }
@@ -425,6 +459,20 @@
     const append  = fontEditMode === 'append';
     const index   = (fontEditMode === 'insert') ? fontEditIndex : 0;
     run(() => FontEdit(fontEditCz, fontEditInfo, fontEditTtf, fontEditOutCz, fontEditOutInfo, fontEditCharsetFile, redraw, append, index));
+  }
+
+  function getVietYOffsets() {
+    const values = [];
+    if (vietYMinus2) values.push(-2);
+    if (vietYMinus1) values.push(-1);
+    if (vietY0) values.push(0);
+    if (vietY1) values.push(1);
+    if (vietY2) values.push(2);
+    if (vietY3) values.push(3);
+    return values;
+  }
+  function startVietnameseFontPatch() {
+    run(() => VietnameseFontPatch(vietFontRoot, vietCharsetFile, vietTtfFile, vietOutputDir, vietSlot, vietFamily, getVietYOffsets(), vietRedrawLatin));
   }
 
   function startImageExport() {
@@ -516,9 +564,39 @@
       if (f) rlOrgFile = f;
     }
   }
+  async function browseRlOrgText() {
+    if (rlOrgTextBatch) {
+      const d = await SelectDirectory('Select folder with .org / .ke files');
+      if (d) rlOrgTextDir = d;
+    } else {
+      const f = await SelectFile('Select .org / .ke file', '*.org;*.ORG;*.ke;*.KE', 'Kepago scripts');
+      if (f) rlOrgTextFile = f;
+    }
+  }
+  async function browseRlOrgTextUtf() {
+    if (rlOrgTextBatch) {
+      const d = await SelectDirectory('Select folder with .utf files');
+      if (d) rlOrgTextUtfDir = d;
+    } else {
+      const f = await SelectFile('Select .utf file', '*.utf;*.UTF', 'UTF text files');
+      if (f) rlOrgTextUtfFile = f;
+    }
+  }
   async function browseRlKfn() { const f = await SelectFile('Select .kfn file', '*.kfn', 'KFN files'); if (f) rlKfnFile = f; }
-  async function browseRlGameexe() { const f = await SelectFile('Select GAMEEXE.INI', '*.ini;*.INI', 'INI files'); if (f) rlGameexe = f; }
-  async function browseRlInterpreter() { const f = await SelectFile('Select RealLive / Steam .exe', '*.exe;*.EXE', 'RealLive-compatible interpreter'); if (f) rlInterpreter = f; }
+  async function browseRlGameexe() {
+    const f = await SelectFile('Select GAMEEXE.INI', '*.ini;*.INI', 'INI files');
+    if (f) {
+      rlGameexe = f;
+      await refreshRlTargetVersion();
+    }
+  }
+  async function browseRlInterpreter() {
+    const f = await SelectFile('Select RealLive / Steam .exe', '*.exe;*.EXE', 'RealLive-compatible interpreter');
+    if (f) {
+      rlInterpreter = f;
+      await refreshRlTargetVersion();
+    }
+  }
   async function browseRlOutputDir() { const d = await SelectDirectory('Select output directory'); if (d) rlOutputDir = d; }
   async function browseRlG00() {
     if (rlG00Batch) { const d = await SelectDirectory('Select folder with .g00 files'); if (d) rlG00Dir = d; }
@@ -566,12 +644,27 @@
     }
   }
   function toggleCompileBatch() { rlOrgFile = ''; rlOrgDir = ''; }
+  function toggleOrgTextBatch() {
+    rlOrgTextFile = '';
+    rlOrgTextDir = '';
+    rlOrgTextUtfFile = '';
+    rlOrgTextUtfDir = '';
+  }
   function toggleG00Batch() { rlG00File = ''; rlG00Dir = ''; rlG00XmlPath = ''; }
   function togglePngBatch() { rlPngFile = ''; rlPngDir = ''; rlPngXmlPath = ''; }
   function toggleNwaBatch() { rlNwaFile = ''; rlNwaDir = ''; }
   function toggleDatBatch() { rlDatFile = ''; rlDatDir = ''; }
   function toggleDatJsonBatch() { rlDatJsonFile = ''; rlDatJsonDir = ''; }
   function startG00Extract() { run(() => RldevG00ToPng(rlG00Batch ? rlG00Dir : rlG00File, rlOutputDir, rlG00XmlPath, rlG00Batch)); }
+  function startOrgText() {
+    const orgInput = rlOrgTextBatch ? rlOrgTextDir : rlOrgTextFile;
+    if (rlOrgTextMode === 'import') {
+      const utfInput = rlOrgTextBatch ? rlOrgTextUtfDir : rlOrgTextUtfFile;
+      run(() => RldevOrgTextImport(orgInput, utfInput, rlOutputDir, rlEncoding, rlOrgTextBatch));
+      return;
+    }
+    run(() => RldevOrgTextExport(orgInput, rlOutputDir, rlEncoding, rlOrgTextBatch));
+  }
   function startG00Import() { run(() => RldevPngToG00(rlPngBatch ? rlPngDir : rlPngFile, rlOutputDir, rlPngXmlPath, rlG00Format, rlPngBatch)); }
   function startGanToXml() { run(() => RldevGanToXml(rlGanFile, rlOutputDir)); }
   function startGanFromXml() { run(() => RldevXmlToGan(rlGanFile, rlOutputDir)); }
@@ -580,6 +673,16 @@
   function startDatFromJson() { run(() => RldevDatJsonToBinary(rlDatJsonBatch ? rlDatJsonDir : rlDatJsonFile, rlOutputDir, rlDatJsonBatch)); }
   function startBabelRuntime() { run(() => RldevBabelPrepareRuntime(rlBabelRoot, rlBabelGameDir, rlBabelVersion, rlBabelDllMode, rlBabelNameEnc, rlBabelUpdateGameexe)); }
   function startBabelHeader() { run(() => RldevBabelWriteHeader(rlOutputDir, rlBabelGlosses)); }
+  async function refreshRlTargetVersion() {
+    const detected = await DetectRealLiveVersion(rlGameexe, rlInterpreter);
+    if (detected && (!rlTargetVersion.trim() || rlTargetVersionAuto)) {
+      rlTargetVersion = detected;
+      rlTargetVersionAuto = true;
+    }
+  }
+  function markRlTargetVersionManual() {
+    rlTargetVersionAuto = false;
+  }
 </script>
 
 <div id="app">
@@ -597,7 +700,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.1.8</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.20 GUI</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card hub-card-disabled" disabled>
@@ -607,7 +710,7 @@
         </button>
         <button class="hub-card" on:click={() => activeView = 'rldev'}>
           <div class="hub-card-title">RLdev 2026</div>
-          <div class="hub-card-ver">v1 · Go port</div>
+          <div class="hub-card-ver">v1.3 · Go port</div>
           <div class="hub-card-desc">SEEN.txt, Kepago/AVG32, G00, NWA<br>DAT, GAN and Babel for RealLive games</div>
         </button>
       </div>
@@ -630,8 +733,8 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem v3.1.8</strong> — Scripts, PAK, fonts, images CZ (LuckEngine)<br>
-          <strong>RLdev 2026 v1</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel (RealLive)<br>
+          <strong>LuckSystem v3.20 GUI</strong> — Scripts, PAK, fonts, images CZ (LuckEngine)<br>
+          <strong>RLdev 2026 v1.3</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine (à venir)<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
         </div>
@@ -689,7 +792,7 @@
   <!-- RLDEV 2026 -->
   {:else if activeView === 'rldev'}
     <div class="titlebar">
-      <span>RLdev 2026 — v1 (Go port)</span>
+      <span>RLdev 2026 — v1.3 (Go port)</span>
       <button class="titlebar-back" on:click={() => activeView = 'hub'}>← Retour</button>
     </div>
     <div class="content">
@@ -759,12 +862,32 @@
           <div class="form-group"><label>KFN file :</label><div class="form-row"><input type="text" bind:value={rlKfnFile} readonly placeholder="Auto : ./KFN/reallive.kfn" /><button class="btn" on:click={browseRlKfn}>Select</button></div></div>
           <div class="form-group"><label>GAMEEXE.INI (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlGameexe} readonly /><button class="btn" on:click={browseRlGameexe}>Select</button></div></div>
           <div class="form-group"><label>Interpréteur RealLive / Steam (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlInterpreter} readonly /><button class="btn" on:click={browseRlInterpreter}>Select</button></div><div class="form-hint">Auto si GAMEEXE.INI pointe vers un dossier contenant RealLive.exe ou SiglusEngine_Steam.exe.</div></div>
-          <div class="form-group"><label>Version RealLive (optionnel) :</label><div class="form-row"><input type="text" bind:value={rlTargetVersion} list="rl-target-version-options" placeholder="ex: 1.2.3.5 pour CLANNAD 2004" /></div><datalist id="rl-target-version-options"><option value="1.2.3.5"></option><option value="1.2.5.5"></option><option value="1.2.7.0"></option><option value="1.2.9.5"></option><option value="1.3.1.0"></option><option value="1.4.0.5"></option></datalist></div>
+          <div class="form-group"><label>Version RealLive (auto si vide) :</label><div class="form-row"><input type="text" bind:value={rlTargetVersion} on:input={markRlTargetVersionManual} list="rl-target-version-options" placeholder="ex: 1.2.3.5 pour CLANNAD 2004" /></div><datalist id="rl-target-version-options"><option value="1.2.3.5"></option><option value="1.2.5.5"></option><option value="1.2.7.0"></option><option value="1.2.9.5"></option><option value="1.3.1.0"></option><option value="1.4.0.5"></option></datalist><div class="form-hint">Rempli automatiquement depuis l'exe RealLive/Steam détecté.</div></div>
           <div class="form-group"><label>Encodage source :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932 / Shift-JIS</option><option value="EUC-JP">EUC-JP</option></select></div></div>
           <div class="form-group"><label>Transformation sortie :</label><div class="form-row"><select bind:value={rlOutputTransform}><option value="NONE">NONE / CP932 original</option><option value="WESTERN">WESTERN / CP1252</option><option value="CHINESE">CHINESE</option><option value="KOREAN">KOREAN</option></select></div></div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlForceTransform} /> Force transform</label></div></div>
           <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startRlCompile} disabled={(rlCompileBatch ? !rlOrgDir : !rlOrgFile) || !rlOutputDir}>Compile</button>{/if}</div>
+
+        {:else if rldevSelectedOp === 'rlc_org_text'}
+          <div class="form-title">Extract text ORG</div>
+          <div class="form-group"><label>Mode :</label><div class="form-row"><select bind:value={rlOrgTextMode}><option value="export">Export .utf</option><option value="import">Import .utf</option></select></div></div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlOrgTextBatch} on:change={toggleOrgTextBatch} /> Batch mode</label></div></div>
+          {#if rlOrgTextBatch}
+            <div class="form-group"><label>ORG/KE folder :</label><div class="form-row"><input type="text" bind:value={rlOrgTextDir} readonly /><button class="btn" on:click={browseRlOrgText}>Select</button></div></div>
+          {:else}
+            <div class="form-group"><label>Script .org / .ke :</label><div class="form-row"><input type="text" bind:value={rlOrgTextFile} readonly /><button class="btn" on:click={browseRlOrgText}>Select</button></div></div>
+          {/if}
+          {#if rlOrgTextMode === 'import'}
+            {#if rlOrgTextBatch}
+              <div class="form-group"><label>UTF folder :</label><div class="form-row"><input type="text" bind:value={rlOrgTextUtfDir} readonly /><button class="btn" on:click={browseRlOrgTextUtf}>Select</button></div></div>
+            {:else}
+              <div class="form-group"><label>UTF file :</label><div class="form-row"><input type="text" bind:value={rlOrgTextUtfFile} readonly /><button class="btn" on:click={browseRlOrgTextUtf}>Select</button></div></div>
+            {/if}
+          {/if}
+          <div class="form-group"><label>Encodage source :</label><div class="form-row"><select bind:value={rlEncoding}><option value="UTF-8">UTF-8</option><option value="CP932">CP932 / Shift-JIS</option><option value="EUC-JP">EUC-JP</option></select></div></div>
+          <div class="form-group"><label>Output folder :</label><div class="form-row"><input type="text" bind:value={rlOutputDir} readonly /><button class="btn" on:click={browseRlOutputDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startOrgText} disabled={(rlOrgTextBatch ? !rlOrgTextDir : !rlOrgTextFile) || (rlOrgTextMode === 'import' && (rlOrgTextBatch ? !rlOrgTextUtfDir : !rlOrgTextUtfFile)) || !rlOutputDir}>{rlOrgTextMode === 'import' ? 'Import ORG' : 'Export UTF'}</button>{/if}</div>
 
         <!-- G00 EXTRACT -->
         {:else if rldevSelectedOp === 'g00_extract'}
@@ -869,7 +992,7 @@
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
   <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3.1.8</span>
+    <span>LuckSystem 2.3.2 - Yoremi fork v3.20 GUI</span>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="titlebar-path" on:click={locateLuckSystem} title="Click to change">
         {#if lsPath}📁 {lsPath}{:else}⚠ lucksystem.exe not found - Click to locate{/if}
@@ -1058,6 +1181,68 @@
           {/if}
         </div>
 
+      <!-- VIETNAMESE FONT PATCH -->
+      {:else if selectedOp === 'viet_font_patch'}
+        <div class="form-title">AIR / Planetarian SG — Vietnamese Font Patch</div>
+        <div class="form-hint form-hint-warn">This dedicated workflow generates safe Vietnamese font PAKs directly from the original game font folder. Use the full 134-character Vietnamese charset file.</div>
+
+        <div class="form-group"><label>Game files folder:</label><div class="form-row"><input type="text" bind:value={vietFontRoot} readonly placeholder="ex: C:\Games\AIR\files or C:\Games\Planetarian SG\files" /><button class="btn" on:click={browseVietFontRoot}>Select</button></div><div class="form-hint">Select the folder that contains <code>font_win32_1280</code>.</div></div>
+        <div class="form-group"><label>Full Vietnamese charset file:</label><div class="form-row"><input type="text" bind:value={vietCharsetFile} readonly placeholder="examples\AIR_vietnamese_full_134.txt" /><button class="btn" on:click={browseVietCharset}>Select</button></div><div class="form-hint">Use the full 134-character charset. The tool keeps the 32 existing characters and injects only the missing 102.</div></div>
+        <div class="form-group"><label>TTF / OTF font file:</label><div class="form-row"><input type="text" bind:value={vietTtfFile} readonly /><button class="btn" on:click={browseVietTtf}>Select</button></div></div>
+        <div class="form-group"><label>Output folder:</label><div class="form-row"><input type="text" bind:value={vietOutputDir} readonly /><button class="btn" on:click={browseVietOutput}>Select</button></div><div class="form-hint">Each selected Y value creates a separate subfolder containing ready-to-test PAKs.</div></div>
+
+        <div class="form-group">
+          <label>Patch mode:</label>
+          <div class="form-row checkbox-row">
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietRedrawLatin} /> Experimental: redraw Latin alphabet from TTF</label>
+          </div>
+          <div class="form-hint">Default mode only injects missing Vietnamese glyphs. Experimental mode redraws A-Z/a-z and already-present Vietnamese glyphs at their original indexes, then injects the missing Vietnamese glyphs.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Target:</label>
+          <div class="form-row">
+            <select bind:value={vietSlot}>
+              <option value="en">English slot (recommended)</option>
+              <option value="zc">Chinese ZC slot</option>
+              <option value="all">Both slots</option>
+            </select>
+            <select bind:value={vietFamily}>
+              <option value="GOTHIC1">GOTHIC1 quick test</option>
+              <option value="GOTHIC2">GOTHIC2</option>
+              <option value="GOTHIC3">GOTHIC3</option>
+              <option value="MINCHO">MINCHO</option>
+              <option value="MODERN">MODERN</option>
+              <option value="all">All English families</option>
+            </select>
+          </div>
+          <div class="form-hint">For first tests, keep English slot + GOTHIC1. Generate all families only after a good Y value is found.</div>
+        </div>
+
+        <div class="form-group">
+          <label>Y alignment values:</label>
+          <div class="form-row checkbox-row">
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietYMinus2} /> Y-2</label>
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietYMinus1} /> Y-1</label>
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietY0} /> Y+0</label>
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietY1} /> Y+1</label>
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietY2} /> Y+2</label>
+            <label class="checkbox-label"><input type="checkbox" bind:checked={vietY3} /> Y+3</label>
+          </div>
+          <div class="form-hint">Y+2 is the validated AIR value. Select several values to create several test folders at once.</div>
+        </div>
+
+        <div class="form-actions">
+          {#if running}
+            <span class="running-indicator"></span> Running...
+          {:else}
+            <button class="btn btn-primary" on:click={startVietnameseFontPatch}
+              disabled={!vietFontRoot || !vietCharsetFile || !vietTtfFile || !vietOutputDir || getVietYOffsets().length === 0}>
+              Generate Vietnamese Font PAKs
+            </button>
+          {/if}
+        </div>
+
       <!-- IMAGE EXPORT -->
       {:else if selectedOp === 'image_export'}
         <div class="form-title">Image Export (CZ → PNG)</div>
@@ -1168,7 +1353,7 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3.1.8</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.20 GUI</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
             Inclut des correctifs CZ (CZ1, CZ4), script, PAK, et une interface subprocess.
@@ -1183,7 +1368,7 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3.1.8 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.20 GUI · Wails + Svelte</div>
         </div>
       {/if}
     </div>

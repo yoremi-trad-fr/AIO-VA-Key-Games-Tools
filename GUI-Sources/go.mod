@@ -2,7 +2,14 @@ module LuckSystemGUI
 
 go 1.23
 
-require github.com/wailsapp/wails/v2 v2.11.0
+require (
+	github.com/go-restruct/restruct v1.2.0-alpha
+	github.com/wailsapp/wails/v2 v2.11.0
+	golang.org/x/image v0.12.0
+	lucksystem v0.0.0
+)
+
+require github.com/golang/glog v1.0.0 // indirect
 
 require (
 	github.com/bep/debounce v1.2.1 // indirect
@@ -33,3 +40,5 @@ require (
 	golang.org/x/sys v0.30.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 )
+
+replace lucksystem => ../../LuckSystem-2.3.2-Yoremi-Update

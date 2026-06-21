@@ -3,9 +3,10 @@ package siglus
 import "encoding/binary"
 
 const (
-	lookback    = 4096
-	level       = 17
-	acceptLevel = 3
+	lookback            = 0x0FFF
+	level               = 17
+	acceptLevel         = 3
+	maxDecompressedSize = 512 << 20
 )
 
 // Decompress décompresse les données selon l'algorithme LZ77 de SiglusEngine.
@@ -14,9 +15,16 @@ func Decompress(data []byte) []byte {
 	if len(data) < 8 {
 		return nil
 	}
+	compLen := int(binary.LittleEndian.Uint32(data[0:4]))
+	if compLen < 8 || compLen > len(data) {
+		return nil
+	}
 	decLen := int(binary.LittleEndian.Uint32(data[4:8]))
+	if decLen < 0 || decLen > maxDecompressedSize {
+		return nil
+	}
 	out := make([]byte, decLen)
-	src := data[8:]
+	src := data[8:compLen]
 	dst := 0
 
 	for dst < decLen {
@@ -44,6 +52,9 @@ func Decompress(data []byte) []byte {
 				src = src[2:]
 				copyLen := (ref & 0x0F) + 2
 				offset := ref >> 4
+				if offset <= 0 || offset > dst {
+					return nil
+				}
 				for j := 0; j < copyLen && dst < decLen; j++ {
 					out[dst] = out[dst-offset]
 					dst++
@@ -51,6 +62,9 @@ func Decompress(data []byte) []byte {
 			}
 			flag >>= 1
 		}
+	}
+	if dst != decLen {
+		return nil
 	}
 	return out
 }
@@ -64,7 +78,7 @@ func Compress(in []byte) []byte {
 	outPos := 8
 	inPos := 0
 
-	for inPos <= srcLen {
+	for inPos < srcLen {
 		ctrlPos := outPos
 		outPos++
 		ctrlByte := byte(0)

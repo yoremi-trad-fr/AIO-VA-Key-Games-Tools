@@ -6,6 +6,8 @@ export function DefaultBabelRoot():Promise<string>;
 
 export function DefaultKFN():Promise<string>;
 
+export function DetectRealLiveVersion(arg1:string,arg2:string):Promise<string>;
+
 export function DialogueDetectFormat(arg1:string):Promise<main.DialogueFormatInfo>;
 
 export function DialogueExtractBatch(arg1:string,arg2:string,arg3:Array<number>):Promise<string>;
@@ -64,6 +66,10 @@ export function RldevList(arg1:string):Promise<string>;
 
 export function RldevNwaToAudio(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;
 
+export function RldevOrgTextExport(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;
+
+export function RldevOrgTextImport(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
+
 export function RldevPngToG00(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
 
 export function RldevXmlToGan(arg1:string,arg2:string):Promise<string>;
@@ -95,3 +101,5 @@ export function SelectTsvFile():Promise<string>;
 export function SetLuckSystemPath():Promise<string>;
 
 export function StopProcess():Promise<void>;
+
+export function VietnameseFontPatch(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<number>,arg8:boolean):Promise<string>;

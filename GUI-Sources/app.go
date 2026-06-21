@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf16"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -23,6 +24,8 @@ type App struct {
 	lucksystem string // path to lucksystem.exe
 	mu         sync.Mutex
 	cancelFunc context.CancelFunc // cancels the running subprocess
+	logMu      sync.Mutex
+	logFile    *os.File
 }
 
 func NewApp() *App {
@@ -222,15 +225,58 @@ func (a *App) ScanGameData() []GamePreset {
 // ───────────────────────────────────────
 
 func (a *App) log(msg string) {
-	wailsRuntime.EventsEmit(a.ctx, "log", msg)
+	a.logMu.Lock()
+	if a.logFile != nil {
+		_, _ = fmt.Fprintln(a.logFile, msg)
+	}
+	a.logMu.Unlock()
+
+	if a.ctx != nil {
+		wailsRuntime.EventsEmit(a.ctx, "log", msg)
+	}
 }
 
 func (a *App) logError(msg string) {
-	wailsRuntime.EventsEmit(a.ctx, "log", "[ERROR] "+msg)
+	a.log("[ERROR] " + msg)
 }
 
 func (a *App) logOK(msg string) {
-	wailsRuntime.EventsEmit(a.ctx, "log", "[OK] "+msg)
+	a.log("[OK] " + msg)
+}
+
+func (a *App) startLogFile(outputDir, prefix string) func() {
+	outputDir = strings.TrimSpace(outputDir)
+	if outputDir == "" {
+		return func() {}
+	}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		a.logError(fmt.Sprintf("journal impossible: %v", err))
+		return func() {}
+	}
+
+	name := fmt.Sprintf("%s-%s.log", prefix, time.Now().Format("20060102-150405"))
+	path := filepath.Join(outputDir, name)
+	file, err := os.Create(path)
+	if err != nil {
+		a.logError(fmt.Sprintf("journal impossible: %v", err))
+		return func() {}
+	}
+
+	a.logMu.Lock()
+	previous := a.logFile
+	a.logFile = file
+	a.logMu.Unlock()
+
+	a.logOK("Log complet: " + path)
+
+	return func() {
+		a.logMu.Lock()
+		if a.logFile == file {
+			a.logFile = previous
+		}
+		a.logMu.Unlock()
+		_ = file.Close()
+	}
 }
 
 // ───────────────────────────────────────
@@ -1559,135 +1605,47 @@ func replaceNthQuotedString(line string, n int, newText string) string {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Generic tool runner (reused for all bin/ tools)
-// ─────────────────────────────────────────────────────────────
-
-func (a *App) runTool(toolName string, args ...string) error {
-	toolPath := a.findTool(toolName)
-	if toolPath == "" {
-		a.logError(fmt.Sprintf("%s not found! Place it in the bin/ folder.", toolName))
-		return fmt.Errorf("%s not found", toolName)
-	}
-
-	a.log(fmt.Sprintf("> %s %s", toolName, strings.Join(args, " ")))
-
-	ctx, cancel := context.WithCancel(a.ctx)
-	a.mu.Lock()
-	a.cancelFunc = cancel
-	a.mu.Unlock()
-	defer func() {
-		cancel()
-		a.mu.Lock()
-		a.cancelFunc = nil
-		a.mu.Unlock()
-	}()
-
-	cmd := exec.CommandContext(ctx, toolPath, args...)
-	hideWindow(cmd)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		a.logError(fmt.Sprintf("stdout pipe: %v", err))
-		return err
-	}
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		a.logError(fmt.Sprintf("stderr pipe: %v", err))
-		return err
-	}
-
-	if err := cmd.Start(); err != nil {
-		a.logError(fmt.Sprintf("Failed to start %s: %v", toolName, err))
-		return err
-	}
-
-	done := make(chan struct{}, 2)
-	streamLines := func(reader io.Reader) {
-		scanner := bufio.NewScanner(reader)
-		buf := make([]byte, 0, 64*1024)
-		scanner.Buffer(buf, 1024*1024)
-		for scanner.Scan() {
-			a.log(scanner.Text())
-		}
-		done <- struct{}{}
-	}
-	go streamLines(stdout)
-	go streamLines(stderr)
-	<-done
-	<-done
-
-	if err := cmd.Wait(); err != nil {
-		if ctx.Err() != nil {
-			a.log("[STOPPED] Process cancelled by user.")
-			return fmt.Errorf("cancelled")
-		}
-		a.logError(fmt.Sprintf("Process exited with error: %v", err))
-		return err
-	}
-	return nil
-}
-
-// ─────────────────────────────────────────────────────────────
 // RLdev 2026 — Backend methods
 // ─────────────────────────────────────────────────────────────
-
-func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameId string, debugInfo bool, outputDir string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — Extract SEEN.txt")
-	a.log("═══════════════════════════════════════")
-
-	if err := required("SEEN.txt", seenFile); err != nil {
-		return a.failIf(err)
+func (a *App) executableDir() (string, error) {
+	exePath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("impossible de localiser l'executable: %w", err)
 	}
-	if err := required("output folder", outputDir); err != nil {
-		return a.failIf(err)
-	}
-	if encoding == "" {
-		encoding = "UTF-8"
-	}
-	if kfnFile == "" {
-		kfnFile = a.findKFN()
-	}
-	if kfnFile != "" {
-		a.log("KFN: " + kfnFile)
-	} else {
-		a.log("Warning: reallive.kfn not found — opcodes will be raw")
-	}
-
-	args := []string{"-d", "-v", "1", "-e", encoding, "-o", outputDir}
-	if kfnFile != "" {
-		args = append(args, "-kfn", kfnFile)
-	}
-	if gameId != "" {
-		args = append(args, "-G", gameId)
-	}
-	if debugInfo {
-		args = append(args, "-g")
-		a.log("Sources debug RealLive: yes (-g / #line)")
-	}
-	args = append(args, seenFile)
-
-	if err := a.runTool("kprl16", args...); err != nil {
-		return err.Error()
-	}
-	a.logOK("Extraction complete.")
-	return ""
+	return filepath.Dir(exePath), nil
 }
 
-// findKFN searches for reallive.kfn in standard locations.
+func (a *App) toolPath(toolName string) (string, error) {
+	allowed := map[string]string{
+		"kprl":    "kprl16",
+		"kprl16":  "kprl16",
+		"rlc":     "rlc2026",
+		"rlc2026": "rlc2026",
+		"vaconv":  "vaconv",
+		"rlxml":   "rlxml",
+	}
+
+	binaryName, ok := allowed[toolName]
+	if !ok {
+		return "", fmt.Errorf("outil non pris en charge: %s", toolName)
+	}
+
+	path := a.findTool(binaryName)
+	if path == "" {
+		return "", fmt.Errorf("binaire manquant: %s dans le dossier bin", binaryName)
+	}
+	return path, nil
+}
 func (a *App) findKFN() string {
+	var candidates []string
+
 	binDir := a.binDir()
-	candidates := []string{
+	candidates = append(candidates,
 		filepath.Join(binDir, "lib", "reallive.kfn"),
 		filepath.Join(binDir, "reallive.kfn"),
-	}
-	exePath, _ := os.Executable()
-	if exePath != "" {
-		exeDir := filepath.Dir(exePath)
-		candidates = append(candidates,
-			filepath.Join(exeDir, "lib", "reallive.kfn"),
-			filepath.Join(exeDir, "reallive.kfn"),
-		)
+	)
+
+	if exeDir, err := a.executableDir(); err == nil {
 		dir := exeDir
 		for i := 0; i < 4 && dir != ""; i++ {
 			candidates = append(candidates, filepath.Join(dir, "KFN", "reallive.kfn"))
@@ -1698,19 +1656,14 @@ func (a *App) findKFN() string {
 			dir = parent
 		}
 	}
-	rldev := os.Getenv("RLDEV")
-	if rldev != "" {
-		candidates = append(candidates,
-			filepath.Join(rldev, "lib", "reallive.kfn"),
-			filepath.Join(rldev, "reallive.kfn"),
-		)
-	}
+
 	if wd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, filepath.Join(wd, "KFN", "reallive.kfn"))
 	}
-	for _, c := range candidates {
-		if info, err := os.Stat(c); err == nil && !info.IsDir() {
-			return c
+
+	for _, candidate := range candidates {
+		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+			return candidate
 		}
 	}
 	return ""
@@ -1729,15 +1682,11 @@ func (a *App) DefaultBabelRoot() string {
 			filepath.Join(filepath.Dir(filepath.Dir(wd)), "ResCODEX", "Rldev2026-go", "BABEL"),
 		)
 	}
-
-	exePath, _ := os.Executable()
-	if exePath != "" {
-		dir := filepath.Dir(exePath)
+	if exeDir, err := a.executableDir(); err == nil {
+		dir := exeDir
 		for i := 0; i < 5 && dir != ""; i++ {
-			candidates = append(candidates,
-				filepath.Join(dir, "BABEL"),
-				filepath.Join(dir, "ResCODEX", "Rldev2026-go", "BABEL"),
-			)
+			candidates = append(candidates, filepath.Join(dir, "BABEL"))
+			candidates = append(candidates, filepath.Join(dir, "ResCODEX", "Rldev2026-go", "BABEL"))
 			parent := filepath.Dir(dir)
 			if parent == dir {
 				break
@@ -1745,7 +1694,6 @@ func (a *App) DefaultBabelRoot() string {
 			dir = parent
 		}
 	}
-
 	for _, candidate := range candidates {
 		if isBabelRoot(candidate) {
 			return candidate
@@ -1765,21 +1713,6 @@ func isBabelRoot(path string) bool {
 		return false
 	}
 	return true
-}
-
-func required(label string, value string) error {
-	if strings.TrimSpace(value) == "" {
-		return fmt.Errorf("%s is required", label)
-	}
-	return nil
-}
-
-func (a *App) failIf(err error) string {
-	if err != nil {
-		a.logError(err.Error())
-		return err.Error()
-	}
-	return ""
 }
 
 var realLiveInterpreterCandidates = []string{
@@ -1810,6 +1743,182 @@ func findInterpreterInDir(dir string) string {
 	return ""
 }
 
+func versionString(v [4]int) string {
+	return fmt.Sprintf("%d.%d.%d.%d", v[0], v[1], v[2], v[3])
+}
+
+func peVersionFromExe(path string) ([4]int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return [4]int{}, err
+	}
+	if len(data) < 0x40 || data[0] != 'M' || data[1] != 'Z' {
+		return [4]int{}, fmt.Errorf("ce n'est pas un executable PE")
+	}
+	peOff := int(uint32(data[0x3c]) | uint32(data[0x3d])<<8 | uint32(data[0x3e])<<16 | uint32(data[0x3f])<<24)
+	if peOff+4 > len(data) || string(data[peOff:peOff+4]) != "PE\x00\x00" {
+		return [4]int{}, fmt.Errorf("signature PE introuvable")
+	}
+
+	coffOff := peOff + 4
+	if coffOff+20 > len(data) {
+		return [4]int{}, fmt.Errorf("en-tete PE tronque")
+	}
+	nsec := int(uint16(data[coffOff+2]) | uint16(data[coffOff+3])<<8)
+	optSize := int(uint16(data[coffOff+16]) | uint16(data[coffOff+17])<<8)
+	secStart := coffOff + 20 + optSize
+
+	rsrcOff := 0
+	rsrcSize := 0
+	for i := 0; i < nsec; i++ {
+		s := secStart + i*40
+		if s+40 > len(data) {
+			break
+		}
+		name := strings.TrimRight(string(data[s:s+8]), "\x00")
+		if name == ".rsrc" {
+			rsrcSize = int(uint32(data[s+16]) | uint32(data[s+17])<<8 | uint32(data[s+18])<<16 | uint32(data[s+19])<<24)
+			rsrcOff = int(uint32(data[s+20]) | uint32(data[s+21])<<8 | uint32(data[s+22])<<16 | uint32(data[s+23])<<24)
+			break
+		}
+	}
+	if rsrcOff == 0 {
+		return [4]int{}, fmt.Errorf("section .rsrc introuvable")
+	}
+	end := rsrcOff + rsrcSize
+	if end > len(data) {
+		end = len(data)
+	}
+
+	idx := findVSFixedFileInfo(data, rsrcOff, end)
+	if idx < 0 {
+		idx = findVSFixedFileInfo(data, 0, len(data))
+	}
+	if idx < 0 {
+		if v, err := peVersionFromStringFileInfo(data); err == nil {
+			return v, nil
+		}
+		return [4]int{}, fmt.Errorf("version RealLive introuvable")
+	}
+	if idx+16 > len(data) {
+		return [4]int{}, fmt.Errorf("version RealLive tronquee")
+	}
+	fvms := uint32(data[idx+8]) | uint32(data[idx+9])<<8 | uint32(data[idx+10])<<16 | uint32(data[idx+11])<<24
+	fvls := uint32(data[idx+12]) | uint32(data[idx+13])<<8 | uint32(data[idx+14])<<16 | uint32(data[idx+15])<<24
+	return [4]int{int(fvms >> 16), int(fvms & 0xffff), int(fvls >> 16), int(fvls & 0xffff)}, nil
+}
+
+func findVSFixedFileInfo(data []byte, start, end int) int {
+	if start < 0 {
+		start = 0
+	}
+	if end > len(data) {
+		end = len(data)
+	}
+	if start >= end {
+		return -1
+	}
+	sig := []byte{0xbd, 0x04, 0xef, 0xfe}
+	for i := start; i+16 < end; i++ {
+		if data[i] == sig[0] && data[i+1] == sig[1] && data[i+2] == sig[2] && data[i+3] == sig[3] {
+			return i
+		}
+	}
+	return -1
+}
+
+func peVersionFromStringFileInfo(data []byte) ([4]int, error) {
+	key := utf16LEBytes("FileVersion")
+	for i := 0; i+len(key) < len(data); i++ {
+		if !bytesEqual(data[i:i+len(key)], key) {
+			continue
+		}
+		searchEnd := i + len(key) + 256
+		if searchEnd > len(data) {
+			searchEnd = len(data)
+		}
+		for j := i + len(key); j+2 <= searchEnd; j += 2 {
+			s := readUTF16LEString(data[j:searchEnd], 64)
+			if v, ok := parseFileVersionString(s); ok {
+				return v, nil
+			}
+		}
+	}
+	return [4]int{}, fmt.Errorf("FileVersion introuvable")
+}
+
+func utf16LEBytes(s string) []byte {
+	words := utf16.Encode([]rune(s))
+	out := make([]byte, 0, len(words)*2)
+	for _, w := range words {
+		out = append(out, byte(w), byte(w>>8))
+	}
+	return out
+}
+
+func readUTF16LEString(data []byte, maxRunes int) string {
+	words := make([]uint16, 0, maxRunes)
+	for i := 0; i+1 < len(data) && len(words) < maxRunes; i += 2 {
+		w := uint16(data[i]) | uint16(data[i+1])<<8
+		if w == 0 {
+			break
+		}
+		words = append(words, w)
+	}
+	return string(utf16.Decode(words))
+}
+
+func parseFileVersionString(s string) ([4]int, bool) {
+	if !strings.ContainsAny(s, ".,") {
+		return [4]int{}, false
+	}
+	parts := make([]int, 0, 4)
+	current := -1
+	flush := func() bool {
+		if current < 0 {
+			return true
+		}
+		if current > 9999 {
+			return false
+		}
+		parts = append(parts, current)
+		current = -1
+		return len(parts) <= 4
+	}
+	for _, r := range s {
+		if r >= '0' && r <= '9' {
+			if current < 0 {
+				current = 0
+			}
+			current = current*10 + int(r-'0')
+			continue
+		}
+		if !flush() {
+			return [4]int{}, false
+		}
+	}
+	if !flush() || len(parts) < 2 || len(parts) > 4 || parts[0] > 20 {
+		return [4]int{}, false
+	}
+	var v [4]int
+	for i, p := range parts {
+		v[i] = p
+	}
+	return v, true
+}
+
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (a *App) resolveInterpreter(gameexe, interpreter string) string {
 	interpreter = strings.TrimSpace(interpreter)
 	if interpreter != "" {
@@ -1837,33 +1946,196 @@ func (a *App) resolveInterpreter(gameexe, interpreter string) string {
 	return ""
 }
 
-func (a *App) RldevExtract(seenFile, outputDir string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — Extract SEEN.txt")
-	a.log("═══════════════════════════════════════")
+func (a *App) DetectRealLiveVersion(gameexe, interpreter string) string {
+	interpreter = a.resolveInterpreter(gameexe, interpreter)
+	if interpreter == "" {
+		return ""
+	}
+	version, err := peVersionFromExe(interpreter)
+	if err != nil {
+		a.log("Version RealLive non detectee: " + err.Error())
+		return ""
+	}
+	text := versionString(version)
+	a.logOK("Version RealLive detectee: " + text)
+	return text
+}
+
+func (a *App) runTool(toolName string, args ...string) error {
+	toolPath, err := a.toolPath(toolName)
+	if err != nil {
+		a.logError(err.Error())
+		return err
+	}
+
+	a.log(fmt.Sprintf("> %s %s", filepath.Base(toolPath), strings.Join(args, " ")))
+
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.mu.Lock()
+	a.cancelFunc = cancel
+	a.mu.Unlock()
+	defer func() {
+		cancel()
+		a.mu.Lock()
+		a.cancelFunc = nil
+		a.mu.Unlock()
+	}()
+
+	cmd := exec.CommandContext(ctx, toolPath, args...)
+	cmd.Dir = filepath.Dir(toolPath)
+	hideWindow(cmd)
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		a.logError(fmt.Sprintf("stdout: %v", err))
+		return err
+	}
+
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		a.logError(fmt.Sprintf("stderr: %v", err))
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		a.logError(fmt.Sprintf("demarrage impossible: %v", err))
+		return err
+	}
+
+	done := make(chan struct{}, 2)
+	streamLines := func(reader io.Reader) {
+		scanner := bufio.NewScanner(reader)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			a.log(scanner.Text())
+		}
+		if err := scanner.Err(); err != nil {
+			a.logError(fmt.Sprintf("lecture console: %v", err))
+		}
+		done <- struct{}{}
+	}
+
+	go streamLines(stdout)
+	go streamLines(stderr)
+
+	<-done
+	<-done
+
+	if err := cmd.Wait(); err != nil {
+		if ctx.Err() != nil {
+			a.log("[STOPPED] Operation arretee par l'utilisateur.")
+			return fmt.Errorf("operation arretee")
+		}
+		a.logError(fmt.Sprintf("processus termine en erreur: %v", err))
+		return err
+	}
+
+	return nil
+}
+
+func required(label string, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return fmt.Errorf("%s est requis", label)
+	}
+	return nil
+}
+
+func (a *App) failIf(err error) string {
+	if err != nil {
+		a.logError(err.Error())
+		return err.Error()
+	}
+	return ""
+}
+
+func (a *App) RldevList(seenFile string) string {
+	a.log("========================================")
+	a.log("  RLdev - Liste SEEN.txt")
+	a.log("========================================")
+
 	if err := required("SEEN.txt", seenFile); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
-		return a.failIf(err)
-	}
-	if err := a.runTool("kprl16", "-x", "-o", outputDir, seenFile); err != nil {
+	if err := a.runTool("kprl", "-l", seenFile); err != nil {
 		return err.Error()
 	}
-	a.logOK("Extraction complete.")
+	return ""
+}
+
+func (a *App) RldevDisassemble(seenFile, kfnFile, encoding, gameID string, debugInfo bool, outputDir string) string {
+	a.log("========================================")
+	a.log("  RLdev - Desassemblage SEEN.txt")
+	a.log("========================================")
+
+	if err := required("SEEN.txt", seenFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "kprl-disasm")
+	defer closeLog()
+
+	if encoding == "" {
+		encoding = "UTF-8"
+	}
+	if kfnFile == "" {
+		kfnFile = a.findKFN()
+	}
+	if err := required("KFN", kfnFile); err != nil {
+		return a.failIf(err)
+	}
+
+	args := []string{"-d", "-v", "1", "-e", encoding, "-o", outputDir}
+	a.log("KFN: " + kfnFile)
+	args = append(args, "-kfn", kfnFile)
+	if gameID != "" {
+		args = append(args, "-G", gameID)
+	}
+	if debugInfo {
+		args = append(args, "-g")
+		a.log("Sources debug RealLive: oui (-g / #line)")
+	}
+	args = append(args, seenFile)
+
+	if err := a.runTool("kprl", args...); err != nil {
+		return err.Error()
+	}
+	a.logOK("Desassemblage termine.")
+	return ""
+}
+
+func (a *App) RldevExtract(seenFile, outputDir string) string {
+	a.log("========================================")
+	a.log("  RLdev - Extraction brute SEEN.txt")
+	a.log("========================================")
+
+	if err := required("SEEN.txt", seenFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+
+	if err := a.runTool("kprl", "-x", "-v", "1", "-o", outputDir, seenFile); err != nil {
+		return err.Error()
+	}
+	a.logOK("Extraction terminee.")
 	return ""
 }
 
 func (a *App) RldevArchive(outputSeen, inputDir, templateSeen string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — Create Archive")
-	a.log("═══════════════════════════════════════")
-	if err := required("output SEEN.txt", outputSeen); err != nil {
+	a.log("========================================")
+	a.log("  RLdev - Reconstruction SEEN.txt")
+	a.log("========================================")
+
+	if err := required("SEEN.txt de sortie", outputSeen); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("input folder", inputDir); err != nil {
+	if err := required("dossier d'entree", inputDir); err != nil {
 		return a.failIf(err)
 	}
+
 	seen := map[string]bool{}
 	var files []string
 	for _, pattern := range []string{"*.TXT", "*.txt", "*.AVG", "*.avg"} {
@@ -1878,9 +2150,9 @@ func (a *App) RldevArchive(outputSeen, inputDir, templateSeen string) string {
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		a.logError("No .TXT or .avg files found in " + inputDir)
-		return "no .TXT or .avg files found"
+		return a.failIf(fmt.Errorf("aucun fichier .TXT ou .avg trouve dans %s", inputDir))
 	}
+
 	args := []string{"-a"}
 	if strings.TrimSpace(templateSeen) != "" {
 		args = append(args, "-template", templateSeen)
@@ -1888,31 +2160,18 @@ func (a *App) RldevArchive(outputSeen, inputDir, templateSeen string) string {
 	}
 	args = append(args, outputSeen)
 	args = append(args, files...)
-	if err := a.runTool("kprl16", args...); err != nil {
+	if err := a.runTool("kprl", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK(fmt.Sprintf("Archive created with %d files.", len(files)))
+	a.logOK(fmt.Sprintf("Archive reconstruite avec %d fichier(s).", len(files)))
 	return ""
 }
 
-func (a *App) RldevList(seenFile string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — List Archive Contents")
-	a.log("═══════════════════════════════════════")
-	if err := required("SEEN.txt", seenFile); err != nil {
-		return a.failIf(err)
-	}
-	if err := a.runTool("kprl16", "-l", seenFile); err != nil {
-		return err.Error()
-	}
-	return ""
-}
-
-func appendTransformArgs(args []string, transform string, forceTransform bool) []string {
-	transform = strings.TrimSpace(transform)
-	hasTransform := transform != "" && !strings.EqualFold(transform, "NONE")
+func appendTransformArgs(args []string, outputTransform string, forceTransform bool) []string {
+	outputTransform = strings.TrimSpace(outputTransform)
+	hasTransform := outputTransform != "" && !strings.EqualFold(outputTransform, "NONE")
 	if hasTransform {
-		args = append(args, "-x", transform)
+		args = append(args, "-x", outputTransform)
 	}
 	if hasTransform && forceTransform {
 		args = append(args, "--force-transform")
@@ -1920,23 +2179,25 @@ func appendTransformArgs(args []string, transform string, forceTransform bool) [
 	return args
 }
 
-func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, targetVersion, encoding, transform string, forceTransform bool, outputDir string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — Compile .org")
-	a.log("═══════════════════════════════════════")
+func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, targetVersion, encoding, outputTransform string, forceTransform bool, outputDir string) string {
+	a.log("========================================")
+	a.log("  RLdev - Compilation script")
+	a.log("========================================")
 
 	if err := required("script .org/.ke/.avg", orgFile); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
+	closeLog := a.startLogFile(outputDir, "rlc-compile")
+	defer closeLog()
 
 	if isAVG32SourceFile(orgFile) {
-		if err := a.compileAVG32Source(orgFile, outputDir, transform, forceTransform); err != nil {
+		if err := a.compileAVG32Source(orgFile, outputDir, outputTransform, forceTransform); err != nil {
 			return err.Error()
 		}
-		a.logOK("AVG32 compilation complete.")
+		a.logOK("Compilation AVG32 terminee.")
 		return ""
 	}
 
@@ -1952,7 +2213,7 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, targetVersion
 	interpreter = a.resolveInterpreter(gameexe, interpreter)
 
 	args := []string{"-v", "-e", encoding, "-d", outputDir}
-	args = appendTransformArgs(args, transform, forceTransform)
+	args = appendTransformArgs(args, outputTransform, forceTransform)
 	args = append(args, "-K", kfnFile)
 	if gameexe != "" {
 		args = append(args, "-i", gameexe)
@@ -1963,65 +2224,36 @@ func (a *App) RldevCompile(orgFile, kfnFile, gameexe, interpreter, targetVersion
 	targetVersion = strings.TrimSpace(targetVersion)
 	if targetVersion != "" {
 		args = append(args, "--target-version", targetVersion)
-		a.log("Version RealLive forced: " + targetVersion)
+		a.log("Version RealLive forcee: " + targetVersion)
 	}
 	args = append(args, orgFile)
-	if err := a.runTool("rlc2026", args...); err != nil {
+
+	if err := a.runTool("rlc", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Compilation complete.")
+	a.logOK("Compilation terminee.")
 	return ""
 }
 
-// ═══════════════════════════════════════
-// RLDEV COMPILE BATCH (directory)
-// ═══════════════════════════════════════
-// For each .org or .ke in inputDir, compiles to .TXT in outputDir.
-// Mirrors the old shell scripts:
-//
-//   Clannad (Shift-JIS):
-//     rlc -o SEENxxxx -d outdir -e cp932 -i gameexe.ini SEENxxxx.ke
-//
-//   Tomoyo / Western (UTF-8):
-//     rlc -x Western -o SEENxxxx -d outdir -i gameexe.ini SEENxxxx.org
-//     (encoding defaults to UTF-8 when -e is omitted)
-//
-// The output filename is derived from the input basename (without
-// extension), exactly like the original .bat / .sh scripts.
+func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, targetVersion, encoding, outputTransform string, forceTransform bool, outputDir string) string {
+	a.log("========================================")
+	a.log("  RLdev - Compilation batch scripts")
+	a.log("========================================")
 
-func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, targetVersion, encoding, transform string, forceTransform bool, outputDir string) string {
-	a.log("════════════════════════════════════════")
-	a.log("  RLdev — COMPILE BATCH (.org/.ke/.avg → .TXT)")
-	a.log("════════════════════════════════════════")
-	if err := required("input folder", inputDir); err != nil {
+	if err := required("dossier d'entree", inputDir); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
-	a.log(fmt.Sprintf("Input:    %s", inputDir))
-	a.log(fmt.Sprintf("Output:   %s", outputDir))
-	if encoding == "" {
-		encoding = "UTF-8"
-	}
-	a.log(fmt.Sprintf("Encoding: %s", encoding))
-	if transform != "" {
-		a.log(fmt.Sprintf("Transform: %s", transform))
-	}
-	a.log("────────────────────────────────────────")
-
-	if err := os.MkdirAll(outputDir, os.ModePerm); err != nil {
-		a.logError(fmt.Sprintf("Cannot create output directory: %v", err))
-		return "ERROR"
-	}
+	closeLog := a.startLogFile(outputDir, "rlc-batch")
+	defer closeLog()
 
 	entries, err := os.ReadDir(inputDir)
 	if err != nil {
-		a.logError(fmt.Sprintf("Cannot read directory: %v", err))
-		return "ERROR"
+		return a.failIf(fmt.Errorf("lecture du dossier impossible: %w", err))
 	}
 
-	// Collect .org, .ke and .avg files, sort for deterministic order.
 	var sources []string
 	hasKepago := false
 	for _, entry := range entries {
@@ -2037,12 +2269,14 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, targetV
 		}
 	}
 	sort.Strings(sources)
-
 	if len(sources) == 0 {
-		a.logError("No .org, .ke or .avg files found in input directory")
-		return "ERROR"
+		return a.failIf(fmt.Errorf("aucun fichier .org, .ke ou .avg trouve dans %s", inputDir))
 	}
+
 	if hasKepago {
+		if encoding == "" {
+			encoding = "UTF-8"
+		}
 		if kfnFile == "" {
 			kfnFile = a.findKFN()
 		}
@@ -2052,29 +2286,25 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, targetV
 		interpreter = a.resolveInterpreter(gameexe, interpreter)
 	}
 
-	a.log(fmt.Sprintf("Found %d source file(s) to compile.", len(sources)))
-	a.log("────────────────────────────────────────")
-
-	count := 0
-	errors := 0
+	okCount := 0
+	errCount := 0
 	for i, name := range sources {
 		base := strings.TrimSuffix(name, filepath.Ext(name))
-		inFile := filepath.Join(inputDir, name)
+		inputFile := filepath.Join(inputDir, name)
+		a.log(fmt.Sprintf("[%d/%d] %s", i+1, len(sources), name))
 
-		a.log(fmt.Sprintf("  [%d/%d] %s ...", i+1, len(sources), name))
-
-		if isAVG32SourceFile(inFile) {
-			if err := a.compileAVG32Source(inFile, outputDir, transform, forceTransform); err != nil {
-				errors++
-				a.logError(fmt.Sprintf("    failed: %v", err))
-			} else {
-				count++
+		if isAVG32SourceFile(inputFile) {
+			if err := a.compileAVG32Source(inputFile, outputDir, outputTransform, forceTransform); err != nil {
+				errCount++
+				a.logError(fmt.Sprintf("%s: %v", name, err))
+				continue
 			}
+			okCount++
 			continue
 		}
 
 		args := []string{"-v", "-e", encoding, "-d", outputDir, "-o", base}
-		args = appendTransformArgs(args, transform, forceTransform)
+		args = appendTransformArgs(args, outputTransform, forceTransform)
 		args = append(args, "-K", kfnFile)
 		if gameexe != "" {
 			args = append(args, "-i", gameexe)
@@ -2086,42 +2316,41 @@ func (a *App) RldevCompileBatch(inputDir, kfnFile, gameexe, interpreter, targetV
 		if targetVersion != "" {
 			args = append(args, "--target-version", targetVersion)
 		}
-		args = append(args, inFile)
+		args = append(args, inputFile)
 
-		if err := a.runTool("rlc2026", args...); err != nil {
-			errors++
-			a.logError(fmt.Sprintf("    failed: %v", err))
-		} else {
-			count++
+		if err := a.runTool("rlc", args...); err != nil {
+			errCount++
+			a.logError(fmt.Sprintf("%s: %v", name, err))
+			continue
 		}
+		okCount++
 	}
 
-	result := fmt.Sprintf("%d file(s) compiled, %d error(s)", count, errors)
-	if errors > 0 {
+	result := fmt.Sprintf("%d fichier(s) compile(s), %d erreur(s)", okCount, errCount)
+	if errCount > 0 {
 		a.logError(result)
-	} else {
-		a.logOK(result)
+		return result
 	}
-	a.log("════════════════════════════════════════")
-	return "OK: " + result
+	a.logOK(result)
+	return ""
 }
 
 func isAVG32SourceFile(path string) bool {
 	return strings.EqualFold(filepath.Ext(path), ".avg")
 }
 
-func (a *App) compileAVG32Source(avgFile, outputDir, transform string, forceTransform bool) error {
+func (a *App) compileAVG32Source(avgFile, outputDir, outputTransform string, forceTransform bool) error {
 	args := []string{"-c", "-t", "AVG32", "-v", "1", "-o", outputDir}
-	args = appendKPRLTransformArgs(args, transform, forceTransform)
+	args = appendKPRLTransformArgs(args, outputTransform, forceTransform)
 	args = append(args, avgFile)
-	return a.runTool("kprl16", args...)
+	return a.runTool("kprl", args...)
 }
 
-func appendKPRLTransformArgs(args []string, transform string, forceTransform bool) []string {
-	transform = strings.TrimSpace(transform)
-	hasTransform := transform != "" && !strings.EqualFold(transform, "NONE")
+func appendKPRLTransformArgs(args []string, outputTransform string, forceTransform bool) []string {
+	outputTransform = strings.TrimSpace(outputTransform)
+	hasTransform := outputTransform != "" && !strings.EqualFold(outputTransform, "NONE")
 	if hasTransform {
-		args = append(args, "-transform-output", transform)
+		args = append(args, "-transform-output", outputTransform)
 	}
 	if hasTransform && forceTransform {
 		args = append(args, "-force-transform")
@@ -2129,7 +2358,110 @@ func appendKPRLTransformArgs(args []string, transform string, forceTransform boo
 	return args
 }
 
-func g00BatchFiles(inputDir, ext string) ([]string, error) {
+func orgTextBatchFiles(inputDir string) ([]string, error) {
+	return assetBatchFilesAny(inputDir, ".org", ".ke")
+}
+
+func (a *App) RldevOrgTextExport(orgInput, outputDir, encoding string, batch bool) string {
+	a.log("========================================")
+	a.log("  RLdev - Export texte ORG/KE")
+	a.log("========================================")
+
+	label := "fichier .org/.ke"
+	if batch {
+		label = "dossier .org/.ke"
+	}
+	if err := required(label, orgInput); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "orgtext-export")
+	defer closeLog()
+	if encoding == "" {
+		encoding = "UTF-8"
+	}
+
+	if batch {
+		files, err := orgTextBatchFiles(orgInput)
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch ORG/KE: %d fichier(s)", len(files)))
+		for i, file := range files {
+			a.log(fmt.Sprintf("[%d/%d] %s", i+1, len(files), filepath.Base(file)))
+			if err := a.runTool("rlc", "--text-export", "-e", encoding, "-d", outputDir, file); err != nil {
+				return err.Error()
+			}
+		}
+		a.logOK("Export texte termine.")
+		return ""
+	}
+
+	if err := a.runTool("rlc", "--text-export", "-e", encoding, "-d", outputDir, orgInput); err != nil {
+		return err.Error()
+	}
+	a.logOK("Export texte termine.")
+	return ""
+}
+
+func (a *App) RldevOrgTextImport(orgInput, utfInput, outputDir, encoding string, batch bool) string {
+	a.log("========================================")
+	a.log("  RLdev - Import texte ORG/KE")
+	a.log("========================================")
+
+	orgLabel := "fichier .org/.ke"
+	utfLabel := "fichier .utf"
+	if batch {
+		orgLabel = "dossier .org/.ke"
+		utfLabel = "dossier .utf"
+	}
+	if err := required(orgLabel, orgInput); err != nil {
+		return a.failIf(err)
+	}
+	if err := required(utfLabel, utfInput); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "orgtext-import")
+	defer closeLog()
+	if encoding == "" {
+		encoding = "UTF-8"
+	}
+
+	if batch {
+		files, err := orgTextBatchFiles(orgInput)
+		if err != nil {
+			return a.failIf(err)
+		}
+		a.log(fmt.Sprintf("Batch ORG/KE: %d fichier(s)", len(files)))
+		for i, file := range files {
+			base := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+			utfFile := filepath.Join(utfInput, base+".utf")
+			if info, err := os.Stat(utfFile); err != nil || info.IsDir() {
+				a.log(fmt.Sprintf("[SKIP] %s: .utf absent", filepath.Base(file)))
+				continue
+			}
+			a.log(fmt.Sprintf("[%d/%d] %s", i+1, len(files), filepath.Base(file)))
+			if err := a.runTool("rlc", "--text-import", "--text-file", utfFile, "-e", encoding, "-d", outputDir, file); err != nil {
+				return err.Error()
+			}
+		}
+		a.logOK("Import texte termine.")
+		return ""
+	}
+
+	if err := a.runTool("rlc", "--text-import", "--text-file", utfInput, "-e", encoding, "-d", outputDir, orgInput); err != nil {
+		return err.Error()
+	}
+	a.logOK("Import texte termine.")
+	return ""
+}
+
+func assetBatchFiles(inputDir, ext string) ([]string, error) {
 	seen := map[string]bool{}
 	var files []string
 	for _, suffix := range []string{strings.ToLower(ext), strings.ToUpper(ext)} {
@@ -2146,7 +2478,7 @@ func g00BatchFiles(inputDir, ext string) ([]string, error) {
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no %s files found in %s", ext, inputDir)
+		return nil, fmt.Errorf("aucun fichier %s trouve dans %s", ext, inputDir)
 	}
 	return files, nil
 }
@@ -2170,7 +2502,7 @@ func assetBatchFilesAny(inputDir string, exts ...string) ([]string, error) {
 	}
 	sort.Strings(files)
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no %s files found in %s", strings.Join(exts, "/"), inputDir)
+		return nil, fmt.Errorf("aucun fichier %s trouve dans %s", strings.Join(exts, "/"), inputDir)
 	}
 	return files, nil
 }
@@ -2192,51 +2524,53 @@ func appendG00FormatArg(args []string, g00Format string) []string {
 }
 
 func (a *App) RldevG00ToPng(g00Input, outputDir, xmlPath string, batch bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — G00 → PNG")
-	a.log("═══════════════════════════════════════")
-	label := "G00 file"
+	a.log("========================================")
+	a.log("  RLdev - G00 vers PNG")
+	a.log("========================================")
+
+	label := "fichier G00"
 	if batch {
-		label = "G00 folder"
+		label = "dossier G00"
 	}
 	if err := required(label, g00Input); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
 
 	args := []string{"-v", "-d", outputDir}
 	args = appendG00MetadataArg(args, xmlPath)
 	if batch {
-		files, err := g00BatchFiles(g00Input, ".g00")
+		files, err := assetBatchFiles(g00Input, ".g00")
 		if err != nil {
 			return a.failIf(err)
 		}
-		a.log(fmt.Sprintf("Batch G00: %d file(s)", len(files)))
-		args = append(args, files...)
+		a.log(fmt.Sprintf("Batch G00: %d fichier(s)", len(files)))
+		args = append(args, "-i", "g00", g00Input)
 	} else {
 		args = append(args, g00Input)
 	}
 	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion terminee.")
 	return ""
 }
 
 func (a *App) RldevPngToG00(pngInput, outputDir, xmlPath, g00Format string, batch bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — PNG → G00")
-	a.log("═══════════════════════════════════════")
-	label := "PNG file"
+	a.log("========================================")
+	a.log("  RLdev - PNG vers G00")
+	a.log("========================================")
+
+	label := "fichier PNG"
 	if batch {
-		label = "PNG folder"
+		label = "dossier PNG"
 	}
 	if err := required(label, pngInput); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
 
@@ -2244,75 +2578,79 @@ func (a *App) RldevPngToG00(pngInput, outputDir, xmlPath, g00Format string, batc
 	args = appendG00FormatArg(args, g00Format)
 	args = appendG00MetadataArg(args, xmlPath)
 	if batch {
-		files, err := g00BatchFiles(pngInput, ".png")
+		files, err := assetBatchFiles(pngInput, ".png")
 		if err != nil {
 			return a.failIf(err)
 		}
-		a.log(fmt.Sprintf("Batch PNG: %d file(s)", len(files)))
-		args = append(args, "-d", outputDir)
-		args = append(args, files...)
+		a.log(fmt.Sprintf("Batch PNG: %d fichier(s)", len(files)))
+		args = append(args, "-i", "png", "-d", outputDir, pngInput)
 	} else {
 		base := strings.TrimSuffix(filepath.Base(pngInput), filepath.Ext(pngInput))
-		outFile := filepath.Join(outputDir, base+".g00")
-		args = append(args, "-o", outFile, "-i", pngInput)
+		outputFile := filepath.Join(outputDir, base+".g00")
+		args = append(args, "-o", outputFile, "-i", pngInput)
 	}
 	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion terminee.")
 	return ""
 }
 
 func (a *App) RldevGanToXml(ganFile, outputDir string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — GAN → XML")
-	a.log("═══════════════════════════════════════")
-	if err := required("GAN file", ganFile); err != nil {
+	a.log("========================================")
+	a.log("  RLdev - GAN vers XML")
+	a.log("========================================")
+
+	if err := required("fichier GAN", ganFile); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
+
 	base := strings.TrimSuffix(filepath.Base(ganFile), filepath.Ext(ganFile))
-	outFile := filepath.Join(outputDir, base+".ganxml")
-	if err := a.runTool("rlxml", "-v", "-o", outFile, ganFile); err != nil {
+	outputFile := filepath.Join(outputDir, base+".ganxml")
+	if err := a.runTool("rlxml", "-v", "-o", outputFile, ganFile); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete: " + outFile)
+	a.logOK("Conversion terminee: " + outputFile)
 	return ""
 }
 
 func (a *App) RldevXmlToGan(xmlFile, outputDir string) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — XML → GAN")
-	a.log("═══════════════════════════════════════")
-	if err := required("GANXML file", xmlFile); err != nil {
+	a.log("========================================")
+	a.log("  RLdev - XML vers GAN")
+	a.log("========================================")
+
+	if err := required("fichier GANXML", xmlFile); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
+
 	base := strings.TrimSuffix(filepath.Base(xmlFile), filepath.Ext(xmlFile))
-	outFile := filepath.Join(outputDir, base+".gan")
-	if err := a.runTool("rlxml", "-v", "-o", outFile, xmlFile); err != nil {
+	outputFile := filepath.Join(outputDir, base+".gan")
+	if err := a.runTool("rlxml", "-v", "-o", outputFile, xmlFile); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete: " + outFile)
+	a.logOK("Conversion terminee: " + outputFile)
 	return ""
 }
 
 func (a *App) RldevNwaToAudio(nwaInput, outputDir, audioFormat string, batch bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — NWA → audio")
-	a.log("═══════════════════════════════════════")
-	label := "NWA file"
+	a.log("========================================")
+	a.log("  RLdev - NWA vers audio")
+	a.log("========================================")
+
+	label := "fichier NWA"
 	if batch {
-		label = "NWA folder"
+		label = "dossier NWA"
 	}
 	if err := required(label, nwaInput); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
 
@@ -2323,34 +2661,35 @@ func (a *App) RldevNwaToAudio(nwaInput, outputDir, audioFormat string, batch boo
 
 	args := []string{"-v", "-audio", audioFormat, "-d", outputDir}
 	if batch {
-		files, err := g00BatchFiles(nwaInput, ".nwa")
+		files, err := assetBatchFiles(nwaInput, ".nwa")
 		if err != nil {
 			return a.failIf(err)
 		}
-		a.log(fmt.Sprintf("Batch NWA: %d file(s)", len(files)))
-		args = append(args, files...)
+		a.log(fmt.Sprintf("Batch NWA: %d fichier(s)", len(files)))
+		args = append(args, "-i", "nwa", nwaInput)
 	} else {
 		args = append(args, nwaInput)
 	}
 	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion terminee.")
 	return ""
 }
 
 func (a *App) RldevDatToJson(datInput, outputDir string, batch bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — CGM/TCC → JSON")
-	a.log("═══════════════════════════════════════")
-	label := "CGM/TCC file"
+	a.log("========================================")
+	a.log("  RLdev - CGM/TCC vers JSON")
+	a.log("========================================")
+
+	label := "fichier CGM/TCC"
 	if batch {
-		label = "CGM/TCC folder"
+		label = "dossier CGM/TCC"
 	}
 	if err := required(label, datInput); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
 
@@ -2360,66 +2699,68 @@ func (a *App) RldevDatToJson(datInput, outputDir string, batch bool) string {
 		if err != nil {
 			return a.failIf(err)
 		}
-		a.log(fmt.Sprintf("Batch DAT: %d file(s)", len(files)))
-		args = append(args, files...)
+		a.log(fmt.Sprintf("Batch DAT: %d fichier(s)", len(files)))
+		args = append(args, "-i", "dat", datInput)
 	} else {
 		args = append(args, datInput)
 	}
 	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion terminee.")
 	return ""
 }
 
 func (a *App) RldevDatJsonToBinary(jsonInput, outputDir string, batch bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — JSON → CGM/TCC")
-	a.log("═══════════════════════════════════════")
-	label := "DAT JSON file"
+	a.log("========================================")
+	a.log("  RLdev - JSON vers CGM/TCC")
+	a.log("========================================")
+
+	label := "fichier JSON DAT"
 	if batch {
-		label = "DAT JSON folder"
+		label = "dossier JSON DAT"
 	}
 	if err := required(label, jsonInput); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("output folder", outputDir); err != nil {
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
 
 	args := []string{"-v", "-d", outputDir}
 	if batch {
-		files, err := g00BatchFiles(jsonInput, ".json")
+		files, err := assetBatchFiles(jsonInput, ".json")
 		if err != nil {
 			return a.failIf(err)
 		}
-		a.log(fmt.Sprintf("Batch JSON DAT: %d file(s)", len(files)))
-		args = append(args, files...)
+		a.log(fmt.Sprintf("Batch JSON DAT: %d fichier(s)", len(files)))
+		args = append(args, "-i", "json", jsonInput)
 	} else {
 		args = append(args, jsonInput)
 	}
 	if err := a.runTool("vaconv", args...); err != nil {
 		return err.Error()
 	}
-	a.logOK("Conversion complete.")
+	a.logOK("Conversion terminee.")
 	return ""
 }
 
 func (a *App) RldevBabelPrepareRuntime(babelRoot, gameDir, version, dllMode, nameEnc string, updateGameexe bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — Babel runtime setup")
-	a.log("═══════════════════════════════════════")
-	if err := required("BABEL folder", babelRoot); err != nil {
+	a.log("========================================")
+	a.log("  RLdev - Preparation runtime Babel")
+	a.log("========================================")
+
+	if err := required("dossier BABEL", babelRoot); err != nil {
 		return a.failIf(err)
 	}
-	if err := required("game folder", gameDir); err != nil {
+	if err := required("dossier du jeu", gameDir); err != nil {
 		return a.failIf(err)
 	}
 	if !isBabelRoot(babelRoot) {
-		return a.failIf(fmt.Errorf("invalid BABEL folder: %s", babelRoot))
+		return a.failIf(fmt.Errorf("dossier BABEL invalide: %s", babelRoot))
 	}
 	if info, err := os.Stat(gameDir); err != nil || !info.IsDir() {
-		return a.failIf(fmt.Errorf("invalid game folder: %s", gameDir))
+		return a.failIf(fmt.Errorf("dossier du jeu invalide: %s", gameDir))
 	}
 
 	version = strings.TrimSpace(version)
@@ -2429,7 +2770,7 @@ func (a *App) RldevBabelPrepareRuntime(babelRoot, gameDir, version, dllMode, nam
 	if err := copyFile(srcDLL, dstDLL); err != nil {
 		return a.failIf(err)
 	}
-	a.logOK("DLL copied: " + dstDLL)
+	a.logOK("DLL copiee: " + dstDLL)
 
 	if version != "" {
 		mapSrc := filepath.Join(babelRoot, "rtl", version+".map")
@@ -2438,9 +2779,9 @@ func (a *App) RldevBabelPrepareRuntime(babelRoot, gameDir, version, dllMode, nam
 			if err := copyFile(mapSrc, mapDst); err != nil {
 				return a.failIf(err)
 			}
-			a.logOK("Map copied: " + mapDst)
+			a.logOK("Map copiee: " + mapDst)
 		} else {
-			a.log("Map not found for " + version + " (use rlbabel-genmap if this version is not bundled in the DLL).")
+			a.log("Map non trouvee pour " + version + " (utiliser rlbabel-genmap si cette version n'est pas integree a la DLL).")
 		}
 	}
 
@@ -2449,25 +2790,26 @@ func (a *App) RldevBabelPrepareRuntime(babelRoot, gameDir, version, dllMode, nam
 		if err := updateBabelGameexe(gameexe, dllName, nameEnc); err != nil {
 			return a.failIf(err)
 		}
-		a.logOK("GAMEEXE.INI updated: " + gameexe)
+		a.logOK("GAMEEXE.INI mis a jour: " + gameexe)
 	} else {
-		a.log("GAMEEXE.INI left untouched.")
+		a.log("GAMEEXE.INI laisse intact.")
 	}
 
 	if dllName == "rlBabelF.dll" {
-		a.log("Note: rlBabelF is for older RealLive 1.2.x; load it at startup with LoadDLL(0, 'rlBabelF') or via rlcInit().")
+		a.log("Note: rlBabelF sert aux vieux RealLive 1.2.x; il faut charger la DLL au demarrage avec LoadDLL(0, 'rlBabelF') ou via rlcInit().")
 	} else {
-		a.log("Note: RealLive 1.2.5+ expects GAMEEXE to contain a #DLL.xxx = \"rlBabel\" line.")
+		a.log("Note: pour RealLive 1.2.5+, GAMEEXE doit contenir une ligne #DLL.xxx = \"rlBabel\".")
 	}
-	a.logOK("Babel runtime setup complete.")
+	a.logOK("Preparation Babel terminee.")
 	return ""
 }
 
 func (a *App) RldevBabelWriteHeader(outputDir string, enableGlosses bool) string {
-	a.log("═══════════════════════════════════════")
-	a.log("  RLdev — Babel global.kh helper")
-	a.log("═══════════════════════════════════════")
-	if err := required("output folder", outputDir); err != nil {
+	a.log("========================================")
+	a.log("  RLdev - Header Babel")
+	a.log("========================================")
+
+	if err := required("dossier de sortie", outputDir); err != nil {
 		return a.failIf(err)
 	}
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -2485,8 +2827,8 @@ func (a *App) RldevBabelWriteHeader(outputDir string, enableGlosses bool) string
 	if err := os.WriteFile(path, []byte(b.String()), 0644); err != nil {
 		return a.failIf(err)
 	}
-	a.logOK("Header created: " + path)
-	a.log("Copy these lines at the beginning of the script to test, or into the project common header.")
+	a.logOK("Header cree: " + path)
+	a.log("Copie ces lignes au debut du script a tester, ou dans le header commun du projet.")
 	return ""
 }
 

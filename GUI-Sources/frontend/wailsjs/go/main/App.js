@@ -10,6 +10,10 @@ export function DefaultKFN() {
   return window['go']['main']['App']['DefaultKFN']();
 }
 
+export function DetectRealLiveVersion(arg1, arg2) {
+  return window['go']['main']['App']['DetectRealLiveVersion'](arg1, arg2);
+}
+
 export function DialogueDetectFormat(arg1) {
   return window['go']['main']['App']['DialogueDetectFormat'](arg1);
 }
@@ -126,6 +130,14 @@ export function RldevNwaToAudio(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['RldevNwaToAudio'](arg1, arg2, arg3, arg4);
 }
 
+export function RldevOrgTextExport(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RldevOrgTextExport'](arg1, arg2, arg3, arg4);
+}
+
+export function RldevOrgTextImport(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RldevOrgTextImport'](arg1, arg2, arg3, arg4, arg5);
+}
+
 export function RldevPngToG00(arg1, arg2, arg3, arg4, arg5) {
   return window['go']['main']['App']['RldevPngToG00'](arg1, arg2, arg3, arg4, arg5);
 }
@@ -188,4 +200,8 @@ export function SetLuckSystemPath() {
 
 export function StopProcess() {
   return window['go']['main']['App']['StopProcess']();
+}
+
+export function VietnameseFontPatch(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {
+  return window['go']['main']['App']['VietnameseFontPatch'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
 }

@@ -133,5 +133,5 @@ func printUsage() {
 	fmt.Println("  siglustest x Scene.pck Harmonia ./scene_extracted")
 	fmt.Println("  siglustest dumpall ./scene_extracted ./text_fr")
 	fmt.Println("  siglustest injectall ./scene_extracted ./text_fr ./scene_patched")
-	fmt.Println("  siglustest r ./scene_patched Harmonia 0x566 Scene_patched.pck")
+	fmt.Println("  siglustest r ./scene_patched Harmonia 0x166 Scene_patched.pck")
 }
