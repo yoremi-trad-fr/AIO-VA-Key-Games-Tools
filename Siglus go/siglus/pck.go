@@ -18,19 +18,19 @@ type pairVal struct {
 // pckHeader correspond exactement à PCKHDR du C
 // Taille fixe : 4 + 10*8 + 4 + 4 = 92 octets
 type pckHeader struct {
-	HdrLen     int32
-	Table1     pairVal
-	GlobalVar  pairVal
+	HdrLen       int32
+	Table1       pairVal
+	GlobalVar    pairVal
 	GlobalVarStr pairVal
-	Name1      pairVal
-	Name2      pairVal
-	Name3      pairVal
-	Name4      pairVal
-	FnameStr   pairVal
-	FileToc    pairVal
-	Data       pairVal
-	Encrypt2   int32
-	Wtf        int32
+	Name1        pairVal
+	Name2        pairVal
+	Name3        pairVal
+	Name4        pairVal
+	FnameStr     pairVal
+	FileToc      pairVal
+	Data         pairVal
+	Encrypt2     int32
+	Wtf          int32
 }
 
 // sectionNames correspond à la liste sections[] du C
@@ -191,6 +191,11 @@ func ExtractPCK(pckPath string, key1 [16]byte, outputDir string) error {
 // Utilise les tables binaires (*.bin) extraites lors de l'extraction.
 // key1 est la clé spécifique au jeu.
 func RebuildPCK(inputDir string, key1 [16]byte, wtfVal int32, outputPath string) error {
+	return RebuildPCKWithOptions(inputDir, key1, wtfVal, outputPath, defaultLevel, false)
+}
+
+// RebuildPCKWithOptions recompile un Scene.pck avec le niveau de compression demandé.
+func RebuildPCKWithOptions(inputDir string, key1 [16]byte, wtfVal int32, outputPath string, compressionLevel int, fakeCompression bool) error {
 	// Lire les tables binaires
 	sections := make([][]byte, len(sectionNames))
 	for i, name := range sectionNames {
@@ -278,7 +283,12 @@ func RebuildPCK(inputDir string, key1 [16]byte, wtfVal int32, outputPath string)
 
 		fmt.Printf("  [%d/%d] %s\n", i+1, fnameCount, ne.name+".ss")
 
-		compData := Compress(ssData)
+		var compData []byte
+		if fakeCompression {
+			compData = FakeCompress(ssData)
+		} else {
+			compData = CompressLevel(ssData, compressionLevel)
+		}
 		// Chiffrement (même opération que déchiffrement — XOR est symétrique)
 		decrypt(compData, 1, key1)
 

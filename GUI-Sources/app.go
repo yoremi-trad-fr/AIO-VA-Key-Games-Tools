@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1617,12 +1618,13 @@ func (a *App) executableDir() (string, error) {
 
 func (a *App) toolPath(toolName string) (string, error) {
 	allowed := map[string]string{
-		"kprl":    "kprl16",
-		"kprl16":  "kprl16",
-		"rlc":     "rlc2026",
-		"rlc2026": "rlc2026",
-		"vaconv":  "vaconv",
-		"rlxml":   "rlxml",
+		"kprl":       "kprl16",
+		"kprl16":     "kprl16",
+		"rlc":        "rlc2026",
+		"rlc2026":    "rlc2026",
+		"vaconv":     "vaconv",
+		"rlxml":      "rlxml",
+		"siglustest": "siglustest",
 	}
 
 	binaryName, ok := allowed[toolName]
@@ -2046,6 +2048,319 @@ func (a *App) failIf(err error) string {
 		return err.Error()
 	}
 	return ""
+}
+
+// ─────────────────────────────────────────────────────────────
+// Siglus Tools 0.61 — Backend wrappers
+// ─────────────────────────────────────────────────────────────
+
+func siglusCompressionArgs(level int, fake bool) []string {
+	if fake || level == 0 {
+		return []string{"-f"}
+	}
+	if level < 2 {
+		level = 2
+	} else if level > 17 {
+		level = 17
+	}
+	return []string{"-c", strconv.Itoa(level)}
+}
+
+func outputDirForFile(path string) string {
+	if strings.TrimSpace(path) == "" {
+		return ""
+	}
+	return filepath.Dir(path)
+}
+
+func (a *App) SiglusSceneExtract(scenePck, gameName, outputDir string) string {
+	if err := required("Scene.pck", scenePck); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("jeu", gameName); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "siglus-scene-extract")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "x", scenePck, gameName, outputDir))
+}
+
+func (a *App) SiglusSceneRebuild(inputDir, gameName, wtfVal, outputPck string, compressionLevel int, fakeCompression bool) string {
+	if err := required("dossier .ss", inputDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("jeu", gameName); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("wtfval", wtfVal); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("Scene.pck de sortie", outputPck); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputPck), "siglus-scene-rebuild")
+	defer closeLog()
+	args := []string{"r", inputDir, gameName, wtfVal, outputPck}
+	args = append(args, siglusCompressionArgs(compressionLevel, fakeCompression)...)
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func siglusSSDumpArgs(copyText bool, filterMode, outputFormat string, singleXlsx bool) []string {
+	var args []string
+	if copyText {
+		args = append(args, "-d")
+	}
+	switch strings.ToLower(strings.TrimSpace(filterMode)) {
+	case "all":
+		args = append(args, "-a")
+	case "full", "full-width", "fullwidth":
+		args = append(args, "-w")
+	}
+	if strings.EqualFold(strings.TrimSpace(outputFormat), "xlsx") {
+		args = append(args, "-x")
+		if singleXlsx {
+			args = append(args, "-s")
+		}
+	}
+	return args
+}
+
+func (a *App) SiglusSSDump(ssFile, outputText string, copyText bool, filterMode, outputFormat string) string {
+	if err := required("fichier .ss", ssFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("texte de sortie", outputText); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputText), "siglus-ss-dump")
+	defer closeLog()
+	args := []string{"dump", ssFile, outputText}
+	args = append(args, siglusSSDumpArgs(copyText, filterMode, outputFormat, false)...)
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusSSDumpAll(ssDir, outputDir string, copyText bool, filterMode, outputFormat string, singleXlsx bool) string {
+	if err := required("dossier .ss", ssDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier texte", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	logDir := outputDir
+	if strings.EqualFold(strings.TrimSpace(outputFormat), "xlsx") && singleXlsx {
+		logDir = outputDirForFile(outputDir)
+	}
+	closeLog := a.startLogFile(logDir, "siglus-ss-dumpall")
+	defer closeLog()
+	args := []string{"dumpall", ssDir, outputDir}
+	args = append(args, siglusSSDumpArgs(copyText, filterMode, outputFormat, singleXlsx)...)
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusSSInject(ssFile, textFile, outputSS string) string {
+	if err := required("fichier .ss original", ssFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("texte traduit", textFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required(".ss de sortie", outputSS); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputSS), "siglus-ss-inject")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "inject", ssFile, textFile, outputSS))
+}
+
+func (a *App) SiglusSSInjectAll(ssDir, textDir, outputDir string) string {
+	if err := required("dossier .ss original", ssDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier texte", textDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "siglus-ss-injectall")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "injectall", ssDir, textDir, outputDir))
+}
+
+func (a *App) SiglusGameexeExtract(gameexeDat, gameName, outputIni string) string {
+	if err := required("Gameexe.dat", gameexeDat); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("jeu", gameName); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("INI de sortie", outputIni); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputIni), "siglus-gameexe-extract")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "gameexe-x", gameexeDat, gameName, outputIni))
+}
+
+func (a *App) SiglusGameexeRebuild(inputIni, gameName, outputDat string, doubleEncryption bool, compressionLevel int, fakeCompression bool) string {
+	if err := required("Gameexe.ini", inputIni); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("jeu", gameName); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("Gameexe.dat de sortie", outputDat); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputDat), "siglus-gameexe-rebuild")
+	defer closeLog()
+	args := []string{"gameexe-r", inputIni, gameName, outputDat}
+	if doubleEncryption {
+		args = append(args, "-p")
+	}
+	args = append(args, siglusCompressionArgs(compressionLevel, fakeCompression)...)
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusDBSExtract(dbsFile, outputRaw, outputTxt, ansiEncoding string, dumpAll bool) string {
+	if err := required("fichier .dbs", dbsFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required(".dbs.out", outputRaw); err != nil {
+		return a.failIf(err)
+	}
+	if err := required(".dbs.txt", outputTxt); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputTxt), "siglus-dbs-extract")
+	defer closeLog()
+	args := []string{"dbs-x", dbsFile, outputRaw, outputTxt}
+	if dumpAll {
+		args = append(args, "-a")
+	}
+	if strings.TrimSpace(ansiEncoding) != "" {
+		args = append(args, "-e", ansiEncoding)
+	}
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusDBSRebuild(rawFile, txtFile, outputDBS, ansiEncoding string, compressionLevel int, fakeCompression bool) string {
+	if err := required(".dbs.out", rawFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required(".dbs.txt", txtFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required(".dbs de sortie", outputDBS); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputDBS), "siglus-dbs-rebuild")
+	defer closeLog()
+	args := []string{"dbs-r", rawFile, txtFile, outputDBS}
+	args = append(args, siglusCompressionArgs(compressionLevel, fakeCompression)...)
+	if strings.TrimSpace(ansiEncoding) != "" {
+		args = append(args, "-e", ansiEncoding)
+	}
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusDBSExportXLSX(dbsFile, outputXLSX, ansiEncoding string) string {
+	if err := required("fichier .dbs", dbsFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("XLSX de sortie", outputXLSX); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputXLSX), "siglus-dbs-xlsx")
+	defer closeLog()
+	args := []string{"dbs-xlsx", dbsFile, outputXLSX}
+	if strings.TrimSpace(ansiEncoding) != "" {
+		args = append(args, "-e", ansiEncoding)
+	}
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusDBSBuildFromXLSX(xlsxDir, outputDir, ansiEncoding string, unicodeOutput bool, compressionLevel int, fakeCompression bool) string {
+	if err := required("dossier XLSX", xlsxDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier DBS de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "siglus-dbs-build")
+	defer closeLog()
+	args := []string{"dbs-build", xlsxDir, outputDir}
+	if !unicodeOutput {
+		args = append(args, "-e")
+		if strings.TrimSpace(ansiEncoding) != "" {
+			args = append(args, ansiEncoding)
+		}
+	}
+	args = append(args, siglusCompressionArgs(compressionLevel, fakeCompression)...)
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
+func (a *App) SiglusMobilePCKExtract(pckFile, outputDir string) string {
+	if err := required("PCK mobile", pckFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier de sortie", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "siglus-mobilepck-extract")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "mpck-x", pckFile, outputDir))
+}
+
+func (a *App) SiglusMobilePCKRebuild(inputDir, outputPCK string) string {
+	if err := required("dossier PCK mobile", inputDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("PCK de sortie", outputPCK); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputPCK), "siglus-mobilepck-rebuild")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "mpck-r", inputDir, outputPCK))
+}
+
+func (a *App) SiglusOMVCut(inputOMV, outputOGV string) string {
+	if err := required("OMV", inputOMV); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("OGV de sortie", outputOGV); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputOGV), "siglus-omv-cut")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "omv-cut", inputOMV, outputOGV))
+}
+
+func (a *App) SiglusOMVPack(inputOGV, outputOMV string) string {
+	if err := required("OGV", inputOGV); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("OMV de sortie", outputOMV); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputOMV), "siglus-omv-pack")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "omv-pack", inputOGV, outputOMV))
+}
+
+func (a *App) SiglusCombinePNG(inputDir, outputPNG string) string {
+	if err := required("dossier PNG", inputDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("PNG de sortie", outputPNG); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputPNG), "siglus-combine-png")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "combine-png", inputDir, outputPNG))
 }
 
 func (a *App) RldevList(seenFile string) string {

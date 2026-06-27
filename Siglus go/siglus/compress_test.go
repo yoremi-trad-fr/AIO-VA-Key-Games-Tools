@@ -16,10 +16,11 @@ func TestCompressDecompressRoundTrip(t *testing.T) {
 	}
 
 	for _, sample := range samples {
-		compressed := Compress(sample)
-		decompressed := Decompress(compressed)
-		if !bytes.Equal(decompressed, sample) {
-			t.Fatalf("round trip mismatch for %d-byte sample", len(sample))
+		for _, compressed := range [][]byte{Compress(sample), CompressLevel(sample, 2), FakeCompress(sample)} {
+			decompressed := Decompress(compressed)
+			if !bytes.Equal(decompressed, sample) {
+				t.Fatalf("round trip mismatch for %d-byte sample", len(sample))
+			}
 		}
 	}
 }

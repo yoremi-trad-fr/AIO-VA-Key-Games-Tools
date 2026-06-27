@@ -4,7 +4,7 @@ import "encoding/binary"
 
 const (
 	lookback            = 0x0FFF
-	level               = 17
+	defaultLevel        = 17
 	acceptLevel         = 3
 	maxDecompressedSize = 512 << 20
 )
@@ -72,6 +72,16 @@ func Decompress(data []byte) []byte {
 // Compress compresse les données selon l'algorithme LZ77 de SiglusEngine.
 // Retourne un buffer avec header [complen int32][declen int32][données compressées...]
 func Compress(in []byte) []byte {
+	return CompressLevel(in, defaultLevel)
+}
+
+// CompressLevel compresses data with a Siglus-compatible level from 2 to 17.
+func CompressLevel(in []byte, level int) []byte {
+	if level < 2 {
+		level = 2
+	} else if level > 17 {
+		level = 17
+	}
 	srcLen := len(in)
 	// Buffer de sortie worst case
 	out := make([]byte, 8+srcLen*2)
@@ -88,7 +98,7 @@ func Compress(in []byte) []byte {
 				break
 			}
 
-			offset, mlen := searchData(in, inPos)
+			offset, mlen := searchData(in, inPos, level)
 
 			if offset == 0 {
 				// Octet littéral
@@ -128,9 +138,40 @@ func Compress(in []byte) []byte {
 	return out[:compLen]
 }
 
+// FakeCompress stores data as literals only, preserving the Siglus compression header.
+func FakeCompress(in []byte) []byte {
+	srcLen := len(in)
+	dataSize := srcLen + srcLen/8 + 8
+	if srcLen%8 != 0 {
+		dataSize++
+	}
+	out := make([]byte, dataSize)
+	binary.LittleEndian.PutUint32(out[0:4], uint32(dataSize))
+	binary.LittleEndian.PutUint32(out[4:8], uint32(srcLen))
+
+	outPos := 8
+	inPos := 0
+	for inPos < srcLen {
+		ctrlPos := outPos
+		out[outPos] = 0xFF
+		outPos++
+		for i := 0; i < 8 && inPos < srcLen; i++ {
+			out[outPos] = in[inPos]
+			outPos++
+			inPos++
+		}
+		if remaining := srcLen - inPos; remaining == 0 && outPos-ctrlPos-1 < 8 {
+			for i := outPos - ctrlPos - 1; i < 8; i++ {
+				out[ctrlPos] &^= 1 << uint(i)
+			}
+		}
+	}
+	return out
+}
+
 // searchData cherche la meilleure correspondance dans la fenêtre glissante.
 // Retourne (offset, longueur-2) ou (0, 0) si aucune correspondance valide.
-func searchData(buf []byte, pos int) (offset, mlen int) {
+func searchData(buf []byte, pos int, level int) (offset, mlen int) {
 	if pos < acceptLevel {
 		return 0, 0
 	}

@@ -100,6 +100,40 @@ export function SelectTsvFile():Promise<string>;
 
 export function SetLuckSystemPath():Promise<string>;
 
+export function SiglusCombinePNG(arg1:string,arg2:string):Promise<string>;
+
+export function SiglusDBSBuildFromXLSX(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:number,arg6:boolean):Promise<string>;
+
+export function SiglusDBSExportXLSX(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function SiglusDBSExtract(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
+
+export function SiglusDBSRebuild(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:boolean):Promise<string>;
+
+export function SiglusGameexeExtract(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function SiglusGameexeRebuild(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:number,arg6:boolean):Promise<string>;
+
+export function SiglusMobilePCKExtract(arg1:string,arg2:string):Promise<string>;
+
+export function SiglusMobilePCKRebuild(arg1:string,arg2:string):Promise<string>;
+
+export function SiglusOMVCut(arg1:string,arg2:string):Promise<string>;
+
+export function SiglusOMVPack(arg1:string,arg2:string):Promise<string>;
+
+export function SiglusSSDump(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string):Promise<string>;
+
+export function SiglusSSDumpAll(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string,arg6:boolean):Promise<string>;
+
+export function SiglusSSInject(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function SiglusSSInjectAll(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function SiglusSceneExtract(arg1:string,arg2:string,arg3:string):Promise<string>;
+
+export function SiglusSceneRebuild(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:boolean):Promise<string>;
+
 export function StopProcess():Promise<void>;
 
 export function VietnameseFontPatch(arg1:string,arg2:string,arg3:string,arg4:string,arg5:string,arg6:string,arg7:Array<number>,arg8:boolean):Promise<string>;

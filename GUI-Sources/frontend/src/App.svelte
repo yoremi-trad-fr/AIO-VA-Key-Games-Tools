@@ -51,11 +51,28 @@
     RldevDatJsonToBinary,
     RldevBabelPrepareRuntime,
     RldevBabelWriteHeader,
-    DetectRealLiveVersion
+    DetectRealLiveVersion,
+    SiglusSceneExtract,
+    SiglusSceneRebuild,
+    SiglusSSDump,
+    SiglusSSDumpAll,
+    SiglusSSInject,
+    SiglusSSInjectAll,
+    SiglusGameexeExtract,
+    SiglusGameexeRebuild,
+    SiglusDBSExtract,
+    SiglusDBSRebuild,
+    SiglusDBSExportXLSX,
+    SiglusDBSBuildFromXLSX,
+    SiglusMobilePCKExtract,
+    SiglusMobilePCKRebuild,
+    SiglusOMVCut,
+    SiglusOMVPack,
+    SiglusCombinePNG
   } from '../wailsjs/go/main/App.js';
 
   // ===== State =====
-  let activeView = 'hub'; // 'hub' | 'lucksystem' | 'rldev' | 'outils' | 'about_global'
+  let activeView = 'hub'; // 'hub' | 'lucksystem' | 'siglus' | 'rldev' | 'outils' | 'about_global'
   let selectedOp = 'decompile';
   let running = false;
   let consoleLines = [];
@@ -207,6 +224,48 @@
   let rlBabelUpdateGameexe = true;
   let rlBabelGlosses = false;
 
+  // --- Siglus fields ---
+  let siglusSelectedOp = 'scene_extract';
+  let siglusGameName = 'Harmonia';
+  let siglusCompressionLevel = 17;
+  let siglusFakeCompression = false;
+  let siglusScenePck = '';
+  let siglusSceneOutputDir = '';
+  let siglusSceneInputDir = '';
+  let siglusSceneWtf = '0x166';
+  let siglusSceneOutputPck = '';
+  let siglusSSBatch = false;
+  let siglusSSInput = '';
+  let siglusSSTsv = '';
+  let siglusSSOutput = '';
+  let siglusSSCopyText = true;
+  let siglusSSFilterMode = 'smart';
+  let siglusSSFormat = 'txt';
+  let siglusSSSingleXlsx = false;
+  let siglusGameexeDat = '';
+  let siglusGameexeIni = '';
+  let siglusGameexeOutput = '';
+  let siglusGameexeDoubleEncryption = false;
+  let siglusDBSFile = '';
+  let siglusDBSRaw = '';
+  let siglusDBSTxt = '';
+  let siglusDBSOutput = '';
+  let siglusDBSXlsx = '';
+  let siglusDBSXlsxDir = '';
+  let siglusDBSOutputDir = '';
+  let siglusDBSEncoding = 'shift-jis';
+  let siglusDBSDumpAll = false;
+  let siglusDBSUnicodeOutput = true;
+  let siglusMobilePck = '';
+  let siglusMobileDir = '';
+  let siglusMobileOutput = '';
+  let siglusOMVInput = '';
+  let siglusOGVOutput = '';
+  let siglusOGVInput = '';
+  let siglusOMVOutput = '';
+  let siglusCombinePNGDir = '';
+  let siglusCombinePNGOutput = '';
+
   // --- RLdev operations ---
   // Numbered to reflect the natural translation workflow:
   //   1. List the archive to see what's inside
@@ -235,6 +294,30 @@
     { id: '_rs7', label: 'BABEL', section: true },
     { id: 'babel_runtime', label: 'Runtime setup' },
     { id: 'babel_header', label: 'global.kh helper' },
+  ];
+
+  const siglusOperations = [
+    { id: '_sg1', label: 'SCENE.PCK', section: true },
+    { id: 'scene_extract', label: 'Extract Scene.pck' },
+    { id: 'scene_rebuild', label: 'Rebuild Scene.pck' },
+    { id: '_sg2', label: 'TEXT (.SS)', section: true },
+    { id: 'ss_dump', label: 'Dump SS text' },
+    { id: 'ss_inject', label: 'Inject SS text' },
+    { id: '_sg3', label: 'GAMEEXE.DAT', section: true },
+    { id: 'gameexe_extract', label: 'Decrypt Gameexe' },
+    { id: 'gameexe_rebuild', label: 'Rebuild Gameexe' },
+    { id: '_sg4', label: 'DBS', section: true },
+    { id: 'dbs_extract', label: 'Dump DBS' },
+    { id: 'dbs_rebuild', label: 'Rebuild DBS' },
+    { id: 'dbs_xlsx', label: 'Dump DBS XLSX' },
+    { id: 'dbs_build', label: 'Build DBS XLSX' },
+    { id: '_sg5', label: 'MOBILE / OMV', section: true },
+    { id: 'mobile_pck_extract', label: 'Extract mobile PCK' },
+    { id: 'mobile_pck_rebuild', label: 'Rebuild mobile PCK' },
+    { id: 'omv_cut', label: 'Cut OMV header' },
+    { id: 'omv_pack', label: 'Pack OMV' },
+    { id: '_sg6', label: 'ANNEXES', section: true },
+    { id: 'combine_png', label: 'Combine PNG' },
   ];
 
   const gameIdOptions = [
@@ -683,6 +766,87 @@
   function markRlTargetVersionManual() {
     rlTargetVersionAuto = false;
   }
+
+  // ===== Siglus browse helpers =====
+  async function browseSiglusScenePck() { const f = await SelectFile('Select Scene.pck', '*.pck;*.PCK', 'PCK files'); if (f) siglusScenePck = f; }
+  async function browseSiglusSceneOutputDir() { const d = await SelectDirectory('Select extraction output'); if (d) siglusSceneOutputDir = d; }
+  async function browseSiglusSceneInputDir() { const d = await SelectDirectory('Select folder with .ss files'); if (d) siglusSceneInputDir = d; }
+  async function browseSiglusSceneOutputPck() { const f = await SelectSaveFile('Save Scene.pck', 'Scene.pck', '*.pck;*.PCK', 'PCK files'); if (f) siglusSceneOutputPck = f; }
+
+  function toggleSiglusSSBatch() { siglusSSInput = ''; siglusSSTsv = ''; siglusSSOutput = ''; }
+  async function browseSiglusSSInput() {
+    if (siglusSSBatch) { const d = await SelectDirectory('Select .ss folder'); if (d) siglusSSInput = d; }
+    else { const f = await SelectFile('Select .ss file', '*.ss;*.SS', 'SS files'); if (f) siglusSSInput = f; }
+  }
+  async function browseSiglusSSTsv() {
+    if (siglusSelectedOp === 'ss_dump') {
+      if (siglusSSFormat === 'xlsx') {
+        if (siglusSSBatch && !siglusSSSingleXlsx) { const d = await SelectDirectory('Select xlsx output folder'); if (d) siglusSSTsv = d; }
+        else { const f = await SelectSaveFile('Save xlsx dump', 'Scene.xlsx', '*.xlsx;*.XLSX', 'Excel files'); if (f) siglusSSTsv = f; }
+      } else if (siglusSSBatch) { const d = await SelectDirectory('Select text output folder'); if (d) siglusSSTsv = d; }
+      else { const f = await SelectSaveFile('Save text dump', 'scene.ss.txt', '*.txt;*.TXT', 'Siglus text files'); if (f) siglusSSTsv = f; }
+      return;
+    }
+    if (siglusSSBatch) { const d = await SelectDirectory('Select translated text/xlsx folder'); if (d) siglusSSTsv = d; }
+    else { const f = await SelectFile('Select translated text', '*.txt;*.tsv;*.xlsx;*.XLSX', 'Siglus text / Excel files'); if (f) siglusSSTsv = f; }
+  }
+  async function browseSiglusSSOutput() {
+    if (siglusSSBatch) { const d = await SelectDirectory('Select patched .ss output folder'); if (d) siglusSSOutput = d; }
+    else { const f = await SelectSaveFile('Save patched .ss', 'patched.ss', '*.ss;*.SS', 'SS files'); if (f) siglusSSOutput = f; }
+  }
+
+  async function browseSiglusGameexeDat() { const f = await SelectFile('Select Gameexe.dat', '*.dat;*.DAT', 'Gameexe files'); if (f) siglusGameexeDat = f; }
+  async function browseSiglusGameexeIni() { const f = await SelectFile('Select Gameexe.ini', '*.ini;*.INI', 'INI files'); if (f) siglusGameexeIni = f; }
+  async function browseSiglusGameexeExtractOutput() { const f = await SelectSaveFile('Save Gameexe.ini', 'Gameexe.ini', '*.ini;*.INI', 'INI files'); if (f) siglusGameexeOutput = f; }
+  async function browseSiglusGameexeRebuildOutput() { const f = await SelectSaveFile('Save Gameexe.dat', 'Gameexe.dat', '*.dat;*.DAT', 'Gameexe files'); if (f) siglusGameexeOutput = f; }
+
+  async function browseSiglusDBSFile() { const f = await SelectFile('Select .dbs file', '*.dbs;*.DBS', 'DBS files'); if (f) siglusDBSFile = f; }
+  async function browseSiglusDBSRaw() {
+    if (siglusSelectedOp === 'dbs_extract') { const f = await SelectSaveFile('Save .dbs.out', 'data.dbs.out', '*.out;*.txt;*.*', 'DBS raw output'); if (f) siglusDBSRaw = f; }
+    else { const f = await SelectFile('Select .dbs.out', '*.out;*.*', 'DBS raw output'); if (f) siglusDBSRaw = f; }
+  }
+  async function browseSiglusDBSTxt() {
+    if (siglusSelectedOp === 'dbs_extract') { const f = await SelectSaveFile('Save .dbs.txt', 'data.dbs.txt', '*.txt;*.TXT', 'DBS text'); if (f) siglusDBSTxt = f; }
+    else { const f = await SelectFile('Select .dbs.txt', '*.txt;*.TXT', 'DBS text'); if (f) siglusDBSTxt = f; }
+  }
+  async function browseSiglusDBSOutput() { const f = await SelectSaveFile('Save .dbs', 'data.dbs', '*.dbs;*.DBS', 'DBS files'); if (f) siglusDBSOutput = f; }
+  async function browseSiglusDBSXlsx() { const f = await SelectSaveFile('Save DBS xlsx', 'data.dbs.xlsx', '*.xlsx;*.XLSX', 'Excel files'); if (f) siglusDBSXlsx = f; }
+  async function browseSiglusDBSXlsxDir() { const d = await SelectDirectory('Select xlsx folder'); if (d) siglusDBSXlsxDir = d; }
+  async function browseSiglusDBSOutputDir() { const d = await SelectDirectory('Select DBS output folder'); if (d) siglusDBSOutputDir = d; }
+
+  async function browseSiglusMobilePck() { const f = await SelectFile('Select mobile PCK', '*.pck;*.PCK', 'PCK files'); if (f) siglusMobilePck = f; }
+  async function browseSiglusMobileDir() { const d = await SelectDirectory('Select mobile PCK folder'); if (d) siglusMobileDir = d; }
+  async function browseSiglusMobileOutput() { const f = await SelectSaveFile('Save mobile PCK', 'data.pck', '*.pck;*.PCK', 'PCK files'); if (f) siglusMobileOutput = f; }
+
+  async function browseSiglusOMVInput() { const f = await SelectFile('Select OMV file', '*.omv;*.OMV', 'OMV files'); if (f) siglusOMVInput = f; }
+  async function browseSiglusOGVOutput() { const f = await SelectSaveFile('Save OGV', 'movie.ogv', '*.ogv;*.OGV', 'OGV files'); if (f) siglusOGVOutput = f; }
+  async function browseSiglusOGVInput() { const f = await SelectFile('Select OGV file', '*.ogv;*.OGV', 'OGV files'); if (f) siglusOGVInput = f; }
+  async function browseSiglusOMVOutput() { const f = await SelectSaveFile('Save OMV', 'movie.omv', '*.omv;*.OMV', 'OMV files'); if (f) siglusOMVOutput = f; }
+  async function browseSiglusCombinePNGDir() { const d = await SelectDirectory('Select PNG folder'); if (d) siglusCombinePNGDir = d; }
+  async function browseSiglusCombinePNGOutput() { const f = await SelectSaveFile('Save combined PNG', 'combined.png', '*.png;*.PNG', 'PNG files'); if (f) siglusCombinePNGOutput = f; }
+
+  // ===== Siglus actions =====
+  function startSiglusSceneExtract() { run(() => SiglusSceneExtract(siglusScenePck, siglusGameName, siglusSceneOutputDir)); }
+  function startSiglusSceneRebuild() { run(() => SiglusSceneRebuild(siglusSceneInputDir, siglusGameName, siglusSceneWtf, siglusSceneOutputPck, siglusCompressionLevel, siglusFakeCompression)); }
+  function startSiglusSSDump() {
+    if (siglusSSBatch) run(() => SiglusSSDumpAll(siglusSSInput, siglusSSTsv, siglusSSCopyText, siglusSSFilterMode, siglusSSFormat, siglusSSSingleXlsx));
+    else run(() => SiglusSSDump(siglusSSInput, siglusSSTsv, siglusSSCopyText, siglusSSFilterMode, siglusSSFormat));
+  }
+  function startSiglusSSInject() {
+    if (siglusSSBatch) run(() => SiglusSSInjectAll(siglusSSInput, siglusSSTsv, siglusSSOutput));
+    else run(() => SiglusSSInject(siglusSSInput, siglusSSTsv, siglusSSOutput));
+  }
+  function startSiglusGameexeExtract() { run(() => SiglusGameexeExtract(siglusGameexeDat, siglusGameName, siglusGameexeOutput)); }
+  function startSiglusGameexeRebuild() { run(() => SiglusGameexeRebuild(siglusGameexeIni, siglusGameName, siglusGameexeOutput, siglusGameexeDoubleEncryption, siglusCompressionLevel, siglusFakeCompression)); }
+  function startSiglusDBSExtract() { run(() => SiglusDBSExtract(siglusDBSFile, siglusDBSRaw, siglusDBSTxt, siglusDBSEncoding, siglusDBSDumpAll)); }
+  function startSiglusDBSRebuild() { run(() => SiglusDBSRebuild(siglusDBSRaw, siglusDBSTxt, siglusDBSOutput, siglusDBSEncoding, siglusCompressionLevel, siglusFakeCompression)); }
+  function startSiglusDBSExportXLSX() { run(() => SiglusDBSExportXLSX(siglusDBSFile, siglusDBSXlsx, siglusDBSEncoding)); }
+  function startSiglusDBSBuildFromXLSX() { run(() => SiglusDBSBuildFromXLSX(siglusDBSXlsxDir, siglusDBSOutputDir, siglusDBSEncoding, siglusDBSUnicodeOutput, siglusCompressionLevel, siglusFakeCompression)); }
+  function startSiglusMobilePCKExtract() { run(() => SiglusMobilePCKExtract(siglusMobilePck, siglusMobileDir)); }
+  function startSiglusMobilePCKRebuild() { run(() => SiglusMobilePCKRebuild(siglusMobileDir, siglusMobileOutput)); }
+  function startSiglusOMVCut() { run(() => SiglusOMVCut(siglusOMVInput, siglusOGVOutput)); }
+  function startSiglusOMVPack() { run(() => SiglusOMVPack(siglusOGVInput, siglusOMVOutput)); }
+  function startSiglusCombinePNG() { run(() => SiglusCombinePNG(siglusCombinePNGDir, siglusCombinePNGOutput)); }
 </script>
 
 <div id="app">
@@ -703,9 +867,9 @@
           <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.20 GUI</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
-        <button class="hub-card hub-card-disabled" disabled>
+        <button class="hub-card" on:click={() => activeView = 'siglus'}>
           <div class="hub-card-title">Siglus Tools</div>
-          <div class="hub-card-ver">0.61 · Coming soon</div>
+          <div class="hub-card-ver">0.61 · Go port</div>
           <div class="hub-card-desc">SiglusEngine extraction<br>and repackaging</div>
         </button>
         <button class="hub-card" on:click={() => activeView = 'rldev'}>
@@ -735,10 +899,163 @@
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
           <strong>LuckSystem v3.20 GUI</strong> — Scripts, PAK, fonts, images CZ (LuckEngine)<br>
           <strong>RLdev 2026 v1.3</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel (RealLive)<br>
-          <strong>Siglus Tools</strong> — SiglusEngine (à venir)<br><br>
+          <strong>Siglus Tools</strong> — SiglusEngine, Scene.pck, SS, Gameexe, DBS, mobile PCK, OMV<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
         </div>
         <div class="about-version">v1.0 · 2026</div>
+      </div>
+    </div>
+
+  <!-- SIGLUS TOOLS -->
+  {:else if activeView === 'siglus'}
+    <div class="titlebar">
+      <span>Siglus Tools 0.61 — Go port</span>
+      <button class="titlebar-back" on:click={() => activeView = 'hub'}>← Retour</button>
+    </div>
+    <div class="content">
+      <div class="sidebar">
+        <div class="sidebar-title">Siglus :</div>
+        <div class="sidebar-list">
+          {#each siglusOperations as op}
+            {#if op.section}
+              <div class="sidebar-section">{op.label}</div>
+            {:else}
+              <div class="sidebar-item" class:active={siglusSelectedOp === op.id} on:click={() => siglusSelectedOp = op.id}>
+                {op.label}
+              </div>
+            {/if}
+          {/each}
+        </div>
+      </div>
+      <div class="form-panel">
+        <datalist id="siglus-game-options">
+          <option value="Harmonia"></option>
+          <option value="Planetarian HD Steam"></option>
+          <option value="Rewrite"></option>
+          <option value="Rewrite Harvest festa!"></option>
+          <option value="Rewrite+"></option>
+          <option value="Rewrite+ Steam English"></option>
+          <option value="Angel Beats! -1st beat-"></option>
+          <option value="Summer Pockets"></option>
+          <option value="Summer Pockets Steam English"></option>
+          <option value="Summer Pockets REFLECTION BLUE DL"></option>
+          <option value="Summer Pockets REFLECTION BLUE PKG"></option>
+          <option value="CLANNAD Steam Chinese"></option>
+          <option value="LOOPERS DL"></option>
+          <option value="LUNARiA DL"></option>
+          <option value="LUNARiA PKG"></option>
+          <option value="AIR Android"></option>
+          <option value="Kanon Android"></option>
+        </datalist>
+
+        {#if siglusSelectedOp === 'scene_extract'}
+          <div class="form-title">Extract Scene.pck</div>
+          <div class="form-group"><label>Scene.pck :</label><div class="form-row"><input type="text" bind:value={siglusScenePck} readonly /><button class="btn" on:click={browseSiglusScenePck}>Select</button></div></div>
+          <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
+          <div class="form-group"><label>Dossier de sortie :</label><div class="form-row"><input type="text" bind:value={siglusSceneOutputDir} readonly /><button class="btn" on:click={browseSiglusSceneOutputDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSceneExtract} disabled={!siglusScenePck || !siglusGameName || !siglusSceneOutputDir}>Extract</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'scene_rebuild'}
+          <div class="form-title">Rebuild Scene.pck</div>
+          <div class="form-group"><label>Dossier extrait :</label><div class="form-row"><input type="text" bind:value={siglusSceneInputDir} readonly /><button class="btn" on:click={browseSiglusSceneInputDir}>Select</button></div></div>
+          <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
+          <div class="form-group"><label>WTF value :</label><div class="form-row"><input type="text" bind:value={siglusSceneWtf} placeholder="0x166" /></div></div>
+          <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
+          <div class="form-group"><label>Scene.pck de sortie :</label><div class="form-row"><input type="text" bind:value={siglusSceneOutputPck} readonly /><button class="btn" on:click={browseSiglusSceneOutputPck}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSceneRebuild} disabled={!siglusSceneInputDir || !siglusGameName || !siglusSceneWtf || !siglusSceneOutputPck}>Rebuild</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'ss_dump'}
+          <div class="form-title">Dump SS text</div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSBatch} on:change={toggleSiglusSSBatch} /> Batch mode</label></div></div>
+          <div class="form-group"><label>{siglusSSBatch ? 'Dossier .ss :' : 'Fichier .ss :'}</label><div class="form-row"><input type="text" bind:value={siglusSSInput} readonly /><button class="btn" on:click={browseSiglusSSInput}>Select</button></div></div>
+          <div class="form-group"><label>Filtre :</label><div class="form-row"><select bind:value={siglusSSFilterMode}><option value="smart">Smart filter</option><option value="all">Export all text</option><option value="full">Full-width only</option></select><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSCopyText} /> Copy text</label></div></div>
+          <div class="form-group"><label>Format :</label><div class="form-row"><select bind:value={siglusSSFormat} on:change={() => siglusSSTsv = ''}><option value="txt">TXT Siglus Tools</option><option value="xlsx">XLSX</option></select>{#if siglusSSBatch && siglusSSFormat === 'xlsx'}<label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSSingleXlsx} on:change={() => siglusSSTsv = ''} /> Single workbook</label>{/if}</div></div>
+          <div class="form-group"><label>{siglusSSFormat === 'xlsx' ? (siglusSSBatch && !siglusSSSingleXlsx ? 'Dossier Excel :' : 'Classeur Excel :') : (siglusSSBatch ? 'Dossier texte :' : 'Texte de sortie :')}</label><div class="form-row"><input type="text" bind:value={siglusSSTsv} readonly /><button class="btn" on:click={browseSiglusSSTsv}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSSDump} disabled={!siglusSSInput || !siglusSSTsv}>Dump</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'ss_inject'}
+          <div class="form-title">Inject SS text</div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSBatch} on:change={toggleSiglusSSBatch} /> Batch mode</label></div></div>
+          <div class="form-group"><label>{siglusSSBatch ? 'Dossier .ss original :' : 'Fichier .ss original :'}</label><div class="form-row"><input type="text" bind:value={siglusSSInput} readonly /><button class="btn" on:click={browseSiglusSSInput}>Select</button></div></div>
+          <div class="form-group"><label>{siglusSSBatch ? 'Dossier texte / Excel :' : 'Texte / Excel traduit :'}</label><div class="form-row"><input type="text" bind:value={siglusSSTsv} readonly /><button class="btn" on:click={browseSiglusSSTsv}>Select</button></div></div>
+          <div class="form-group"><label>{siglusSSBatch ? 'Dossier .ss patché :' : '.ss patché :'}</label><div class="form-row"><input type="text" bind:value={siglusSSOutput} readonly /><button class="btn" on:click={browseSiglusSSOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSSInject} disabled={!siglusSSInput || !siglusSSTsv || !siglusSSOutput}>Inject</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'gameexe_extract'}
+          <div class="form-title">Decrypt Gameexe.dat</div>
+          <div class="form-group"><label>Gameexe.dat :</label><div class="form-row"><input type="text" bind:value={siglusGameexeDat} readonly /><button class="btn" on:click={browseSiglusGameexeDat}>Select</button></div></div>
+          <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
+          <div class="form-group"><label>Gameexe.ini de sortie :</label><div class="form-row"><input type="text" bind:value={siglusGameexeOutput} readonly /><button class="btn" on:click={browseSiglusGameexeExtractOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusGameexeExtract} disabled={!siglusGameexeDat || !siglusGameName || !siglusGameexeOutput}>Decrypt</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'gameexe_rebuild'}
+          <div class="form-title">Rebuild Gameexe.dat</div>
+          <div class="form-group"><label>Gameexe.ini :</label><div class="form-row"><input type="text" bind:value={siglusGameexeIni} readonly /><button class="btn" on:click={browseSiglusGameexeIni}>Select</button></div></div>
+          <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
+          <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label><label class="checkbox-label"><input type="checkbox" bind:checked={siglusGameexeDoubleEncryption} /> Double encryption</label></div></div>
+          <div class="form-group"><label>Gameexe.dat de sortie :</label><div class="form-row"><input type="text" bind:value={siglusGameexeOutput} readonly /><button class="btn" on:click={browseSiglusGameexeRebuildOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusGameexeRebuild} disabled={!siglusGameexeIni || !siglusGameName || !siglusGameexeOutput}>Rebuild</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'dbs_extract'}
+          <div class="form-title">Dump DBS</div>
+          <div class="form-group"><label>Fichier .dbs :</label><div class="form-row"><input type="text" bind:value={siglusDBSFile} readonly /><button class="btn" on:click={browseSiglusDBSFile}>Select</button></div></div>
+          <div class="form-group"><label>Encodage ANSI :</label><div class="form-row"><select bind:value={siglusDBSEncoding}><option value="shift-jis">Shift-JIS</option><option value="gbk">GBK</option></select><label class="checkbox-label"><input type="checkbox" bind:checked={siglusDBSDumpAll} /> Export all data</label></div></div>
+          <div class="form-group"><label>.dbs.out :</label><div class="form-row"><input type="text" bind:value={siglusDBSRaw} readonly /><button class="btn" on:click={browseSiglusDBSRaw}>Select</button></div></div>
+          <div class="form-group"><label>.dbs.txt :</label><div class="form-row"><input type="text" bind:value={siglusDBSTxt} readonly /><button class="btn" on:click={browseSiglusDBSTxt}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusDBSExtract} disabled={!siglusDBSFile || !siglusDBSRaw || !siglusDBSTxt}>Dump</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'dbs_rebuild'}
+          <div class="form-title">Rebuild DBS</div>
+          <div class="form-group"><label>.dbs.out :</label><div class="form-row"><input type="text" bind:value={siglusDBSRaw} readonly /><button class="btn" on:click={browseSiglusDBSRaw}>Select</button></div></div>
+          <div class="form-group"><label>.dbs.txt :</label><div class="form-row"><input type="text" bind:value={siglusDBSTxt} readonly /><button class="btn" on:click={browseSiglusDBSTxt}>Select</button></div></div>
+          <div class="form-group"><label>Encodage ANSI :</label><div class="form-row"><select bind:value={siglusDBSEncoding}><option value="gbk">GBK</option><option value="shift-jis">Shift-JIS</option></select><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
+          <div class="form-group"><label>.dbs de sortie :</label><div class="form-row"><input type="text" bind:value={siglusDBSOutput} readonly /><button class="btn" on:click={browseSiglusDBSOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusDBSRebuild} disabled={!siglusDBSRaw || !siglusDBSTxt || !siglusDBSOutput}>Rebuild</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'dbs_xlsx'}
+          <div class="form-title">Dump DBS XLSX</div>
+          <div class="form-group"><label>Fichier .dbs :</label><div class="form-row"><input type="text" bind:value={siglusDBSFile} readonly /><button class="btn" on:click={browseSiglusDBSFile}>Select</button></div></div>
+          <div class="form-group"><label>Encodage ANSI :</label><div class="form-row"><select bind:value={siglusDBSEncoding}><option value="shift-jis">Shift-JIS</option><option value="gbk">GBK</option></select></div></div>
+          <div class="form-group"><label>Classeur XLSX :</label><div class="form-row"><input type="text" bind:value={siglusDBSXlsx} readonly /><button class="btn" on:click={browseSiglusDBSXlsx}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusDBSExportXLSX} disabled={!siglusDBSFile || !siglusDBSXlsx}>Dump XLSX</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'dbs_build'}
+          <div class="form-title">Build DBS from XLSX</div>
+          <div class="form-group"><label>Dossier XLSX :</label><div class="form-row"><input type="text" bind:value={siglusDBSXlsxDir} readonly /><button class="btn" on:click={browseSiglusDBSXlsxDir}>Select</button></div></div>
+          <div class="form-group"><label>Sortie :</label><div class="form-row"><input type="text" bind:value={siglusDBSOutputDir} readonly /><button class="btn" on:click={browseSiglusDBSOutputDir}>Select</button></div></div>
+          <div class="form-group"><label>Format :</label><div class="form-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusDBSUnicodeOutput} /> Unicode</label>{#if !siglusDBSUnicodeOutput}<select bind:value={siglusDBSEncoding}><option value="gbk">GBK</option><option value="shift-jis">Shift-JIS</option></select>{/if}<input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusDBSBuildFromXLSX} disabled={!siglusDBSXlsxDir || !siglusDBSOutputDir}>Build DBS</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'mobile_pck_extract'}
+          <div class="form-title">Extract mobile PCK</div>
+          <div class="form-group"><label>PCK mobile :</label><div class="form-row"><input type="text" bind:value={siglusMobilePck} readonly /><button class="btn" on:click={browseSiglusMobilePck}>Select</button></div></div>
+          <div class="form-group"><label>Dossier de sortie :</label><div class="form-row"><input type="text" bind:value={siglusMobileDir} readonly /><button class="btn" on:click={browseSiglusMobileDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusMobilePCKExtract} disabled={!siglusMobilePck || !siglusMobileDir}>Extract</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'mobile_pck_rebuild'}
+          <div class="form-title">Rebuild mobile PCK</div>
+          <div class="form-group"><label>Dossier source :</label><div class="form-row"><input type="text" bind:value={siglusMobileDir} readonly /><button class="btn" on:click={browseSiglusMobileDir}>Select</button></div></div>
+          <div class="form-group"><label>PCK de sortie :</label><div class="form-row"><input type="text" bind:value={siglusMobileOutput} readonly /><button class="btn" on:click={browseSiglusMobileOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusMobilePCKRebuild} disabled={!siglusMobileDir || !siglusMobileOutput}>Rebuild</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'omv_cut'}
+          <div class="form-title">Cut OMV header</div>
+          <div class="form-group"><label>Fichier OMV :</label><div class="form-row"><input type="text" bind:value={siglusOMVInput} readonly /><button class="btn" on:click={browseSiglusOMVInput}>Select</button></div></div>
+          <div class="form-group"><label>OGV de sortie :</label><div class="form-row"><input type="text" bind:value={siglusOGVOutput} readonly /><button class="btn" on:click={browseSiglusOGVOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusOMVCut} disabled={!siglusOMVInput || !siglusOGVOutput}>Cut</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'omv_pack'}
+          <div class="form-title">Pack OMV</div>
+          <div class="form-group"><label>Fichier OGV :</label><div class="form-row"><input type="text" bind:value={siglusOGVInput} readonly /><button class="btn" on:click={browseSiglusOGVInput}>Select</button></div></div>
+          <div class="form-group"><label>OMV de sortie :</label><div class="form-row"><input type="text" bind:value={siglusOMVOutput} readonly /><button class="btn" on:click={browseSiglusOMVOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusOMVPack} disabled={!siglusOGVInput || !siglusOMVOutput}>Pack</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'combine_png'}
+          <div class="form-title">Combine PNG</div>
+          <div class="form-group"><label>Dossier PNG :</label><div class="form-row"><input type="text" bind:value={siglusCombinePNGDir} readonly /><button class="btn" on:click={browseSiglusCombinePNGDir}>Select</button></div></div>
+          <div class="form-group"><label>PNG de sortie :</label><div class="form-row"><input type="text" bind:value={siglusCombinePNGOutput} readonly /><button class="btn" on:click={browseSiglusCombinePNGOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusCombinePNG} disabled={!siglusCombinePNGDir || !siglusCombinePNGOutput}>Combine</button>{/if}</div>
+        {/if}
       </div>
     </div>
 

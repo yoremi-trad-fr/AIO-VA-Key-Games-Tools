@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf16"
+
+	"github.com/xuri/excelize/v2"
 )
 
 // strEntry représente une entrée dans la string index d'un fichier .ss
@@ -43,6 +46,18 @@ const ssHeaderSize = 4 + 16*8 // 132 octets
 type SSLine struct {
 	Index int
 	Text  string
+}
+
+type ssXLSXSheetTranslations struct {
+	SSName       string
+	Translations map[int]string
+}
+
+// SSDumpOptions matches the text export switches from Siglus Tools 0.61.
+type SSDumpOptions struct {
+	CopyText      bool
+	ExportAllText bool
+	FullWidthOnly bool
 }
 
 // DumpSS extrait les chaînes de texte d'un fichier .ss
@@ -107,57 +122,77 @@ func DumpSS(ssPath string) ([]SSLine, error) {
 	return lines, nil
 }
 
-// DumpSSToTSV extrait les textes d'un fichier .ss et les sauvegarde en TSV
-// Format TSV : index \t texte_original \t texte_traduit (vide)
-func DumpSSToTSV(ssPath, tsvPath string) error {
+// DumpSSToText extrait les textes d'un fichier .ss au format txt de Siglus Tools.
+func DumpSSToText(ssPath, txtPath string, opts SSDumpOptions) error {
 	lines, err := DumpSS(ssPath)
 	if err != nil {
 		return err
 	}
 
-	var sb strings.Builder
-	sb.WriteString("index\toriginal\ttranslation\n")
-	for _, l := range lines {
-		if l.Text == "" {
-			continue
-		}
-		// Encoder les sauts de ligne pour TSV
-		text := strings.ReplaceAll(l.Text, "\n", "\\n")
-		text = strings.ReplaceAll(text, "\t", "\\t")
-		fmt.Fprintf(&sb, "%d\t%s\t\n", l.Index, text)
+	text := FormatSSTextDump(lines, opts)
+	return os.WriteFile(txtPath, []byte(text), 0644)
+}
+
+// DumpSSToXLSX extrait les textes d'un fichier .ss au format Excel Siglus Tools.
+func DumpSSToXLSX(ssPath, xlsxPath string, opts SSDumpOptions) error {
+	lines, err := DumpSS(ssPath)
+	if err != nil {
+		return err
 	}
 
-	return os.WriteFile(tsvPath, []byte(sb.String()), 0644)
+	book := excelize.NewFile()
+	defer func() { _ = book.Close() }()
+
+	used := map[string]bool{}
+	defaultSheet := book.GetSheetName(0)
+	sheetName := ssExcelSheetName(filepath.Base(ssPath), used)
+	if err := book.SetSheetName(defaultSheet, sheetName); err != nil {
+		return err
+	}
+	if _, err := writeSSXLSXSheet(book, sheetName, filepath.Base(ssPath), lines, opts); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(xlsxPath), 0755); err != nil {
+		return err
+	}
+	return book.SaveAs(xlsxPath)
+}
+
+// DumpSSToTSV is kept for older callers, but now writes the Siglus Tools text format.
+func DumpSSToTSV(ssPath, tsvPath string) error {
+	return DumpSSToText(ssPath, tsvPath, SSDumpOptions{})
+}
+
+func FormatSSTextDump(lines []SSLine, opts SSDumpOptions) string {
+	var sb strings.Builder
+	for _, l := range lines {
+		if !shouldExportSSLine(l, opts) {
+			continue
+		}
+		fmt.Fprintf(&sb, "○%010d○%s\r\n", l.Index, l.Text)
+		if opts.CopyText {
+			fmt.Fprintf(&sb, "●%010d●%s\r\n\r\n", l.Index, l.Text)
+		} else {
+			fmt.Fprintf(&sb, "●%010d●\r\n\r\n", l.Index)
+		}
+	}
+	return sb.String()
 }
 
 // InjectSS réinjecte les traductions depuis un TSV dans un fichier .ss
 // Le TSV doit avoir le format : index \t original \t translation
 func InjectSS(ssPath, tsvPath, outputPath string) error {
 	// Charger la map des traductions
-	tsvData, err := os.ReadFile(tsvPath)
+	translations, err := ReadSSTranslations(tsvPath)
 	if err != nil {
-		return fmt.Errorf("cannot read TSV: %w", err)
+		return err
 	}
+	return injectSSWithTranslations(ssPath, translations, outputPath)
+}
 
-	translations := make(map[int]string)
-	for i, line := range strings.Split(string(tsvData), "\n") {
-		if i == 0 || strings.TrimSpace(line) == "" {
-			continue // skip header et lignes vides
-		}
-		parts := strings.SplitN(line, "\t", 3)
-		if len(parts) < 3 || parts[2] == "" {
-			continue
-		}
-		var idx int
-		fmt.Sscanf(parts[0], "%d", &idx)
-		text := parts[2]
-		text = strings.ReplaceAll(text, "\\n", "\n")
-		text = strings.ReplaceAll(text, "\\t", "\t")
-		translations[idx] = text
-	}
-
+func injectSSWithTranslations(ssPath string, translations map[int]string, outputPath string) error {
 	if len(translations) == 0 {
-		return fmt.Errorf("no translations found in TSV")
+		return fmt.Errorf("no translations found")
 	}
 
 	// Lire le .ss original
@@ -171,7 +206,6 @@ func InjectSS(ssPath, tsvPath, outputPath string) error {
 	idxCount := int(hdr.StrIndex.Size)
 	tblOffset := int(hdr.StrTable.Offset)
 	tblSize := int(hdr.StrTable.Size) * 2 // en bytes
-
 
 	entries := make([]strEntry, idxCount)
 	for i := 0; i < idxCount; i++ {
@@ -250,6 +284,11 @@ func InjectSS(ssPath, tsvPath, outputPath string) error {
 
 // DumpSSDir extrait tous les .ss d'un dossier vers des TSV
 func DumpSSDir(inputDir, outputDir string) error {
+	return DumpSSDirWithOptions(inputDir, outputDir, SSDumpOptions{})
+}
+
+// DumpSSDirWithOptions extrait tous les .ss d'un dossier vers des .txt Siglus Tools.
+func DumpSSDirWithOptions(inputDir, outputDir string, opts SSDumpOptions) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return err
 	}
@@ -263,15 +302,106 @@ func DumpSSDir(inputDir, outputDir string) error {
 			continue
 		}
 		ssPath := filepath.Join(inputDir, e.Name())
-		tsvName := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name())) + ".tsv"
-		tsvPath := filepath.Join(outputDir, tsvName)
-		if err := DumpSSToTSV(ssPath, tsvPath); err != nil {
+		txtName := e.Name() + ".txt"
+		txtPath := filepath.Join(outputDir, txtName)
+		if err := DumpSSToText(ssPath, txtPath, opts); err != nil {
+			fmt.Printf("[WARN] %s: %v\n", e.Name(), err)
+			continue
+		}
+		if info, err := os.Stat(txtPath); err == nil && info.Size() == 0 {
+			_ = os.Remove(txtPath)
+			continue
+		}
+		count++
+	}
+	fmt.Printf("Dumped %d ss files to text in %s\n", count, outputDir)
+	return nil
+}
+
+// DumpSSDirToXLSX extrait tous les .ss d'un dossier vers un .xlsx par fichier.
+func DumpSSDirToXLSX(inputDir, outputDir string, opts SSDumpOptions) error {
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(inputDir)
+	if err != nil {
+		return err
+	}
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".ss") {
+			continue
+		}
+		ssPath := filepath.Join(inputDir, e.Name())
+		lines, err := DumpSS(ssPath)
+		if err != nil {
+			fmt.Printf("[WARN] %s: %v\n", e.Name(), err)
+			continue
+		}
+		if countExportableSSLines(lines, opts) == 0 {
+			continue
+		}
+		xlsxPath := filepath.Join(outputDir, e.Name()+".xlsx")
+		if err := DumpSSToXLSX(ssPath, xlsxPath, opts); err != nil {
 			fmt.Printf("[WARN] %s: %v\n", e.Name(), err)
 			continue
 		}
 		count++
 	}
-	fmt.Printf("Dumped %d ss files to TSV in %s\n", count, outputDir)
+	fmt.Printf("Dumped %d ss files to xlsx in %s\n", count, outputDir)
+	return nil
+}
+
+// DumpSSDirToSingleXLSX extrait tous les .ss d'un dossier dans un seul classeur.
+func DumpSSDirToSingleXLSX(inputDir, xlsxPath string, opts SSDumpOptions) error {
+	entries, err := os.ReadDir(inputDir)
+	if err != nil {
+		return err
+	}
+
+	book := excelize.NewFile()
+	defer func() { _ = book.Close() }()
+
+	usedSheets := map[string]bool{}
+	defaultSheet := book.GetSheetName(0)
+	count := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".ss") {
+			continue
+		}
+		ssPath := filepath.Join(inputDir, e.Name())
+		lines, err := DumpSS(ssPath)
+		if err != nil {
+			fmt.Printf("[WARN] %s: %v\n", e.Name(), err)
+			continue
+		}
+		if countExportableSSLines(lines, opts) == 0 {
+			continue
+		}
+
+		sheetName := ssExcelSheetName(e.Name(), usedSheets)
+		if count == 0 {
+			if err := book.SetSheetName(defaultSheet, sheetName); err != nil {
+				return err
+			}
+		} else if _, err := book.NewSheet(sheetName); err != nil {
+			return err
+		}
+		if _, err := writeSSXLSXSheet(book, sheetName, e.Name(), lines, opts); err != nil {
+			return err
+		}
+		count++
+	}
+	if count == 0 {
+		return fmt.Errorf("no dumpable text found in %s", inputDir)
+	}
+	if err := os.MkdirAll(filepath.Dir(xlsxPath), 0755); err != nil {
+		return err
+	}
+	if err := book.SaveAs(xlsxPath); err != nil {
+		return err
+	}
+	fmt.Printf("Dumped %d ss files to xlsx %s\n", count, xlsxPath)
 	return nil
 }
 
@@ -286,29 +416,338 @@ func InjectSSDir(ssDir, tsvDir, outputDir string) error {
 	}
 	count := 0
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".tsv") {
+		lowerName := strings.ToLower(e.Name())
+		if e.IsDir() {
 			continue
 		}
-		baseName := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
-		ssPath := filepath.Join(ssDir, baseName+".ss")
-		tsvPath := filepath.Join(tsvDir, e.Name())
-		outPath := filepath.Join(outputDir, baseName+".ss")
-
-		if _, err := os.Stat(ssPath); os.IsNotExist(err) {
-			fmt.Printf("[SKIP] %s (no matching .ss)\n", e.Name())
+		if strings.HasSuffix(lowerName, ".xlsx") {
+			n, err := InjectSSWorkbook(ssDir, filepath.Join(tsvDir, e.Name()), outputDir)
+			if err != nil {
+				fmt.Printf("[WARN] %s: %v\n", e.Name(), err)
+				continue
+			}
+			count += n
 			continue
 		}
-		if err := InjectSS(ssPath, tsvPath, outPath); err != nil {
-			fmt.Printf("[WARN] %s: %v\n", e.Name(), err)
+		if !strings.HasSuffix(lowerName, ".txt") && !strings.HasSuffix(lowerName, ".tsv") {
 			continue
 		}
-		count++
+		if injectSSDirTextFile(ssDir, filepath.Join(tsvDir, e.Name()), outputDir, e.Name()) {
+			count++
+		}
 	}
 	fmt.Printf("Injected %d files → %s\n", count, outputDir)
 	return nil
 }
 
+// InjectSSWorkbook importe un classeur Excel Siglus Tools dans un dossier de .ss.
+func InjectSSWorkbook(ssDir, xlsxPath, outputDir string) (int, error) {
+	sheets, err := readSSXLSXWorkbookTranslations(xlsxPath)
+	if err != nil {
+		return 0, err
+	}
+	count := 0
+	for _, sheet := range sheets {
+		ssName := ssFileNameFromWorkbookName(sheet.SSName)
+		ssPath := filepath.Join(ssDir, ssName)
+		outPath := filepath.Join(outputDir, ssName)
+		if _, err := os.Stat(ssPath); os.IsNotExist(err) {
+			fmt.Printf("[SKIP] %s (no matching .ss)\n", sheet.SSName)
+			continue
+		}
+		if err := injectSSWithTranslations(ssPath, sheet.Translations, outPath); err != nil {
+			fmt.Printf("[WARN] %s: %v\n", sheet.SSName, err)
+			continue
+		}
+		count++
+	}
+	return count, nil
+}
+
 // ─── helpers internes ───────────────────────────────────────
+
+func shouldExportSSLine(line SSLine, opts SSDumpOptions) bool {
+	if line.Text == "" {
+		return false
+	}
+	return opts.ExportAllText || shouldDumpSSText(line.Text, opts.FullWidthOnly)
+}
+
+func countExportableSSLines(lines []SSLine, opts SSDumpOptions) int {
+	count := 0
+	for _, line := range lines {
+		if shouldExportSSLine(line, opts) {
+			count++
+		}
+	}
+	return count
+}
+
+func shouldDumpSSText(text string, fullWidthOnly bool) bool {
+	if fullWidthOnly {
+		for _, r := range text {
+			if isSiglusHalfWidth(r) {
+				return false
+			}
+		}
+		return true
+	}
+	for _, r := range text {
+		if !isSiglusHalfWidth(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func isSiglusHalfWidth(r rune) bool {
+	return r <= 0x7F
+}
+
+func ReadSSTranslations(path string) (map[int]string, error) {
+	if strings.EqualFold(filepath.Ext(path), ".xlsx") {
+		return readSSXLSXTranslations(path)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read text dump: %w", err)
+	}
+	text := strings.ReplaceAll(string(data), "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	if strings.Contains(text, "●") {
+		return parseSSMarkerTranslations(text), nil
+	}
+	return parseSSTSVTranslations(text), nil
+}
+
+func parseSSMarkerTranslations(text string) map[int]string {
+	translations := make(map[int]string)
+	for _, line := range strings.Split(text, "\n") {
+		if !strings.HasPrefix(line, "●") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "●")
+		pos := strings.Index(rest, "●")
+		if pos < 0 {
+			continue
+		}
+		idx, err := strconv.Atoi(rest[:pos])
+		if err != nil {
+			continue
+		}
+		translations[idx] = rest[pos+len("●"):]
+	}
+	return translations
+}
+
+func parseSSTSVTranslations(text string) map[int]string {
+	translations := make(map[int]string)
+	for i, line := range strings.Split(text, "\n") {
+		if i == 0 || strings.TrimSpace(line) == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 3 || parts[2] == "" {
+			continue
+		}
+		idx, err := strconv.Atoi(parts[0])
+		if err != nil {
+			continue
+		}
+		value := strings.ReplaceAll(parts[2], "\\n", "\n")
+		value = strings.ReplaceAll(value, "\\t", "\t")
+		translations[idx] = value
+	}
+	return translations
+}
+
+func ssNameFromTextDump(name string) string {
+	lower := strings.ToLower(name)
+	if strings.HasSuffix(lower, ".ss.txt") {
+		return name[:len(name)-len(".ss.txt")]
+	}
+	return strings.TrimSuffix(name, filepath.Ext(name))
+}
+
+func injectSSDirTextFile(ssDir, textPath, outputDir, textName string) bool {
+	baseName := ssNameFromTextDump(textName)
+	ssPath := filepath.Join(ssDir, baseName+".ss")
+	outPath := filepath.Join(outputDir, baseName+".ss")
+
+	if _, err := os.Stat(ssPath); os.IsNotExist(err) {
+		fmt.Printf("[SKIP] %s (no matching .ss)\n", textName)
+		return false
+	}
+	if err := InjectSS(ssPath, textPath, outPath); err != nil {
+		fmt.Printf("[WARN] %s: %v\n", textName, err)
+		return false
+	}
+	return true
+}
+
+func writeSSXLSXSheet(book *excelize.File, sheetName, fileName string, lines []SSLine, opts SSDumpOptions) (int, error) {
+	if err := book.SetColWidth(sheetName, "A", "A", 8); err != nil {
+		return 0, err
+	}
+	if err := book.SetColWidth(sheetName, "B", "C", 64); err != nil {
+		return 0, err
+	}
+	headers := []any{"Index", "Text", "Translation"}
+	if sheetName != fileName {
+		headers = append(headers, fileName)
+	}
+	if err := book.SetSheetRow(sheetName, "A1", &headers); err != nil {
+		return 0, err
+	}
+
+	row := 2
+	count := 0
+	for _, line := range lines {
+		if !shouldExportSSLine(line, opts) {
+			continue
+		}
+		translation := ""
+		if opts.CopyText {
+			translation = line.Text
+		}
+		values := []any{line.Index, line.Text, translation}
+		cell := fmt.Sprintf("A%d", row)
+		if err := book.SetSheetRow(sheetName, cell, &values); err != nil {
+			return 0, err
+		}
+		row++
+		count++
+	}
+	return count, nil
+}
+
+func readSSXLSXTranslations(path string) (map[int]string, error) {
+	sheets, err := readSSXLSXWorkbookTranslations(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(sheets) == 0 {
+		return nil, fmt.Errorf("no translation sheet found in %s", path)
+	}
+	return sheets[0].Translations, nil
+}
+
+func readSSXLSXWorkbookTranslations(path string) ([]ssXLSXSheetTranslations, error) {
+	book, err := excelize.OpenFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read xlsx: %w", err)
+	}
+	defer func() { _ = book.Close() }()
+
+	var sheets []ssXLSXSheetTranslations
+	for _, sheetName := range book.GetSheetList() {
+		translations := map[int]string{}
+		rows, err := book.GetRows(sheetName)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			if len(row) == 0 {
+				continue
+			}
+			idx, err := parseSSXLSXIndex(row[0])
+			if err != nil {
+				continue
+			}
+			translation := ""
+			if len(row) >= 3 {
+				translation = row[2]
+			}
+			translations[idx] = translation
+		}
+		if len(translations) == 0 {
+			continue
+		}
+		ssName := sheetName
+		fullName, _ := book.GetCellValue(sheetName, "D1")
+		if fullName != "" || len([]rune(sheetName)) >= 31 {
+			if strings.TrimSpace(fullName) != "" {
+				ssName = strings.TrimSpace(fullName)
+			}
+		}
+		sheets = append(sheets, ssXLSXSheetTranslations{
+			SSName:       ssName,
+			Translations: translations,
+		})
+	}
+	return sheets, nil
+}
+
+func parseSSXLSXIndex(value string) (int, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, fmt.Errorf("empty index")
+	}
+	if idx, err := strconv.Atoi(value); err == nil {
+		return idx, nil
+	}
+	if dot := strings.IndexByte(value, '.'); dot >= 0 {
+		whole := value[:dot]
+		fraction := strings.Trim(value[dot+1:], "0")
+		if fraction == "" {
+			return strconv.Atoi(whole)
+		}
+	}
+	return 0, fmt.Errorf("invalid index: %s", value)
+}
+
+func ssFileNameFromWorkbookName(name string) string {
+	name = strings.TrimSpace(name)
+	if strings.HasSuffix(strings.ToLower(name), ".ss") {
+		return name
+	}
+	return name + ".ss"
+}
+
+func ssExcelSheetName(fileName string, used map[string]bool) string {
+	clean := sanitizeSSExcelSheetName(fileName)
+	if clean == "" {
+		clean = "Sheet"
+	}
+	base := truncateRunes(clean, 31)
+	name := base
+	for n := 1; used[strings.ToLower(name)]; n++ {
+		suffix := fmt.Sprintf("_%d", n)
+		name = truncateRunes(base, 31-len([]rune(suffix))) + suffix
+	}
+	used[strings.ToLower(name)] = true
+	return name
+}
+
+func sanitizeSSExcelSheetName(name string) string {
+	var sb strings.Builder
+	for _, r := range name {
+		switch r {
+		case '[', ']', ':', '*', '?', '/', '\\':
+			sb.WriteRune('_')
+		default:
+			if r < 0x20 {
+				sb.WriteRune('_')
+			} else {
+				sb.WriteRune(r)
+			}
+		}
+	}
+	clean := strings.TrimSpace(sb.String())
+	clean = strings.Trim(clean, "'")
+	return clean
+}
+
+func truncateRunes(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit])
+}
 
 func readSSHeader(buf []byte) ssHeader {
 	var h ssHeader
