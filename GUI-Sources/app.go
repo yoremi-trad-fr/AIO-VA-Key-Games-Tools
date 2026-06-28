@@ -2351,6 +2351,50 @@ func (a *App) SiglusOMVPack(inputOGV, outputOMV string) string {
 	return a.failIf(a.runTool("siglustest", "omv-pack", inputOGV, outputOMV))
 }
 
+func (a *App) SiglusOMV2AVI(inputOMV, outputFile string) string {
+	if err := required("OMV", inputOMV); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("AVI / OGV de sortie", outputFile); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputFile), "siglus-omv2avi")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "omv2avi", inputOMV, outputFile))
+}
+
+func (a *App) SiglusOMVPNG(inputOMV, outputDir string) string {
+	if err := required("OMV", inputOMV); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("dossier PNG", outputDir); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDir, "siglus-omv-png")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "omv-png", inputOMV, outputDir))
+}
+
+func (a *App) SiglusPNGVideo(inputDir, outputFile string, alpha bool, fps string) string {
+	if err := required("dossier PNG", inputDir); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("video de sortie", outputFile); err != nil {
+		return a.failIf(err)
+	}
+	fps = strings.TrimSpace(fps)
+	if fps == "" {
+		fps = "30"
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputFile), "siglus-png-video")
+	defer closeLog()
+	args := []string{"png-video", inputDir, outputFile, "--fps", fps}
+	if alpha {
+		args = append(args, "--alpha")
+	}
+	return a.failIf(a.runTool("siglustest", args...))
+}
+
 func (a *App) SiglusCombinePNG(inputDir, outputPNG string) string {
 	if err := required("dossier PNG", inputDir); err != nil {
 		return a.failIf(err)
@@ -2361,6 +2405,21 @@ func (a *App) SiglusCombinePNG(inputDir, outputPNG string) string {
 	closeLog := a.startLogFile(outputDirForFile(outputPNG), "siglus-combine-png")
 	defer closeLog()
 	return a.failIf(a.runTool("siglustest", "combine-png", inputDir, outputPNG))
+}
+
+func (a *App) SiglusScriptRepack(scriptFile, textFile, outputScript string) string {
+	if err := required("script", scriptFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("texte UTF-16", textFile); err != nil {
+		return a.failIf(err)
+	}
+	if err := required("script de sortie", outputScript); err != nil {
+		return a.failIf(err)
+	}
+	closeLog := a.startLogFile(outputDirForFile(outputScript), "siglus-script-repack")
+	defer closeLog()
+	return a.failIf(a.runTool("siglustest", "script-repack", scriptFile, textFile, outputScript))
 }
 
 func (a *App) RldevList(seenFile string) string {
@@ -2839,8 +2898,16 @@ func appendG00FormatArg(args []string, g00Format string) []string {
 }
 
 func (a *App) RldevG00ToPng(g00Input, outputDir, xmlPath string, batch bool) string {
+	return a.runG00ToPng("RLdev - G00 vers PNG", g00Input, outputDir, xmlPath, batch)
+}
+
+func (a *App) SiglusG00ToPng(g00Input, outputDir, xmlPath string, batch bool) string {
+	return a.runG00ToPng("Siglus / vaconv - G00 vers PNG", g00Input, outputDir, xmlPath, batch)
+}
+
+func (a *App) runG00ToPng(title, g00Input, outputDir, xmlPath string, batch bool) string {
 	a.log("========================================")
-	a.log("  RLdev - G00 vers PNG")
+	a.log("  " + title)
 	a.log("========================================")
 
 	label := "fichier G00"
@@ -2874,8 +2941,16 @@ func (a *App) RldevG00ToPng(g00Input, outputDir, xmlPath string, batch bool) str
 }
 
 func (a *App) RldevPngToG00(pngInput, outputDir, xmlPath, g00Format string, batch bool) string {
+	return a.runPngToG00("RLdev - PNG vers G00", pngInput, outputDir, xmlPath, g00Format, batch)
+}
+
+func (a *App) SiglusPngToG00(pngInput, outputDir, xmlPath, g00Format string, batch bool) string {
+	return a.runPngToG00("Siglus / vaconv - PNG vers G00", pngInput, outputDir, xmlPath, g00Format, batch)
+}
+
+func (a *App) runPngToG00(title, pngInput, outputDir, xmlPath, g00Format string, batch bool) string {
 	a.log("========================================")
-	a.log("  RLdev - PNG vers G00")
+	a.log("  " + title)
 	a.log("========================================")
 
 	label := "fichier PNG"

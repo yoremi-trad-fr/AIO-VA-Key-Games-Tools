@@ -68,7 +68,13 @@
     SiglusMobilePCKRebuild,
     SiglusOMVCut,
     SiglusOMVPack,
-    SiglusCombinePNG
+    SiglusOMV2AVI,
+    SiglusOMVPNG,
+    SiglusPNGVideo,
+    SiglusCombinePNG,
+    SiglusScriptRepack,
+    SiglusG00ToPng,
+    SiglusPngToG00
   } from '../wailsjs/go/main/App.js';
 
   // ===== State =====
@@ -263,8 +269,30 @@
   let siglusOGVOutput = '';
   let siglusOGVInput = '';
   let siglusOMVOutput = '';
+  let siglusOMV2AVIInput = '';
+  let siglusOMV2AVIOutput = '';
+  let siglusOMVPNGInput = '';
+  let siglusOMVPNGOutputDir = '';
+  let siglusPNGVideoDir = '';
+  let siglusPNGVideoOutput = '';
+  let siglusPNGVideoAlpha = false;
+  let siglusPNGVideoFPS = '30';
   let siglusCombinePNGDir = '';
   let siglusCombinePNGOutput = '';
+  let siglusScriptRepackScript = '';
+  let siglusScriptRepackText = '';
+  let siglusScriptRepackOutput = '';
+  let siglusG00File = '';
+  let siglusG00Dir = '';
+  let siglusG00Batch = false;
+  let siglusG00OutputDir = '';
+  let siglusG00XmlPath = '';
+  let siglusPngFile = '';
+  let siglusPngDir = '';
+  let siglusPngBatch = false;
+  let siglusPngOutputDir = '';
+  let siglusPngXmlPath = '';
+  let siglusG00Format = 'auto';
 
   // --- RLdev operations ---
   // Numbered to reflect the natural translation workflow:
@@ -316,8 +344,14 @@
     { id: 'mobile_pck_rebuild', label: 'Rebuild mobile PCK' },
     { id: 'omv_cut', label: 'Cut OMV header' },
     { id: 'omv_pack', label: 'Pack OMV' },
+    { id: 'omv2avi', label: 'Omv2Avi' },
+    { id: 'omv_png', label: 'OMV → PNG sequence' },
+    { id: 'png_video', label: 'PNG sequence → OMV/OGV' },
     { id: '_sg6', label: 'ANNEXES', section: true },
+    { id: 'g00_extract', label: 'G00 → PNG (vaconv)' },
+    { id: 'g00_import', label: 'PNG → G00 (vaconv)' },
     { id: 'combine_png', label: 'Combine PNG' },
+    { id: 'script_repack', label: 'Script Repacker' },
   ];
 
   const gameIdOptions = [
@@ -822,8 +856,41 @@
   async function browseSiglusOGVOutput() { const f = await SelectSaveFile('Save OGV', 'movie.ogv', '*.ogv;*.OGV', 'OGV files'); if (f) siglusOGVOutput = f; }
   async function browseSiglusOGVInput() { const f = await SelectFile('Select OGV file', '*.ogv;*.OGV', 'OGV files'); if (f) siglusOGVInput = f; }
   async function browseSiglusOMVOutput() { const f = await SelectSaveFile('Save OMV', 'movie.omv', '*.omv;*.OMV', 'OMV files'); if (f) siglusOMVOutput = f; }
+  async function browseSiglusOMV2AVIInput() { const f = await SelectFile('Select OMV file', '*.omv;*.OMV', 'OMV files'); if (f) siglusOMV2AVIInput = f; }
+  async function browseSiglusOMV2AVIOutput() { const f = await SelectSaveFile('Save AVI / OGV', 'movie.avi', '*.avi;*.AVI;*.ogv;*.OGV', 'AVI / OGV files'); if (f) siglusOMV2AVIOutput = f; }
+  async function browseSiglusOMVPNGInput() { const f = await SelectFile('Select OMV file', '*.omv;*.OMV', 'OMV files'); if (f) siglusOMVPNGInput = f; }
+  async function browseSiglusOMVPNGOutputDir() { const d = await SelectDirectory('Select PNG output folder'); if (d) siglusOMVPNGOutputDir = d; }
+  async function browseSiglusPNGVideoDir() { const d = await SelectDirectory('Select PNG sequence folder'); if (d) siglusPNGVideoDir = d; }
+  async function browseSiglusPNGVideoOutput() { const f = await SelectSaveFile('Save OMV / OGV', 'movie.omv', '*.omv;*.OMV;*.ogv;*.OGV', 'OMV / OGV files'); if (f) siglusPNGVideoOutput = f; }
   async function browseSiglusCombinePNGDir() { const d = await SelectDirectory('Select PNG folder'); if (d) siglusCombinePNGDir = d; }
   async function browseSiglusCombinePNGOutput() { const f = await SelectSaveFile('Save combined PNG', 'combined.png', '*.png;*.PNG', 'PNG files'); if (f) siglusCombinePNGOutput = f; }
+  async function browseSiglusScriptRepackScript() { const f = await SelectFile('Select script file', '*.ss;*.SS;*.dat;*.DAT;*.*', 'Script files'); if (f) siglusScriptRepackScript = f; }
+  async function browseSiglusScriptRepackText() { const f = await SelectFile('Select UTF-16 text', '*.txt;*.TXT', 'Text files'); if (f) siglusScriptRepackText = f; }
+  async function browseSiglusScriptRepackOutput() {
+    const base = siglusScriptRepackScript ? `${siglusScriptRepackScript.split(/[\\/]/).pop()}.out` : 'script.ss.out';
+    const f = await SelectSaveFile('Save repacked script', base, '*.ss;*.SS;*.out;*.*', 'Script files');
+    if (f) siglusScriptRepackOutput = f;
+  }
+  async function browseSiglusG00() {
+    if (siglusG00Batch) { const d = await SelectDirectory('Select folder with .g00 files'); if (d) siglusG00Dir = d; }
+    else { const f = await SelectFile('Select .g00 file', '*.g00;*.G00', 'G00 images'); if (f) siglusG00File = f; }
+  }
+  async function browseSiglusG00Xml() {
+    if (siglusG00Batch) { const d = await SelectDirectory('Select XML output folder'); if (d) siglusG00XmlPath = d; }
+    else { const f = await SelectSaveFile('Save metadata XML as', 'image.xml', '*.xml;*.XML', 'G00 metadata XML'); if (f) siglusG00XmlPath = f; }
+  }
+  async function browseSiglusG00OutputDir() { const d = await SelectDirectory('Select output folder'); if (d) siglusG00OutputDir = d; }
+  async function browseSiglusPng() {
+    if (siglusPngBatch) { const d = await SelectDirectory('Select folder with .png files'); if (d) siglusPngDir = d; }
+    else { const f = await SelectFile('Select .png file', '*.png;*.PNG', 'PNG images'); if (f) siglusPngFile = f; }
+  }
+  async function browseSiglusPngXml() {
+    if (siglusPngBatch) { const d = await SelectDirectory('Select folder with .xml metadata files'); if (d) siglusPngXmlPath = d; }
+    else { const f = await SelectFile('Select .xml metadata file', '*.xml;*.XML', 'G00 metadata XML'); if (f) siglusPngXmlPath = f; }
+  }
+  async function browseSiglusPngOutputDir() { const d = await SelectDirectory('Select output folder'); if (d) siglusPngOutputDir = d; }
+  function toggleSiglusG00Batch() { siglusG00File = ''; siglusG00Dir = ''; siglusG00XmlPath = ''; }
+  function toggleSiglusPngBatch() { siglusPngFile = ''; siglusPngDir = ''; siglusPngXmlPath = ''; }
 
   // ===== Siglus actions =====
   function startSiglusSceneExtract() { run(() => SiglusSceneExtract(siglusScenePck, siglusGameName, siglusSceneOutputDir)); }
@@ -846,7 +913,13 @@
   function startSiglusMobilePCKRebuild() { run(() => SiglusMobilePCKRebuild(siglusMobileDir, siglusMobileOutput)); }
   function startSiglusOMVCut() { run(() => SiglusOMVCut(siglusOMVInput, siglusOGVOutput)); }
   function startSiglusOMVPack() { run(() => SiglusOMVPack(siglusOGVInput, siglusOMVOutput)); }
+  function startSiglusOMV2AVI() { run(() => SiglusOMV2AVI(siglusOMV2AVIInput, siglusOMV2AVIOutput)); }
+  function startSiglusOMVPNG() { run(() => SiglusOMVPNG(siglusOMVPNGInput, siglusOMVPNGOutputDir)); }
+  function startSiglusPNGVideo() { run(() => SiglusPNGVideo(siglusPNGVideoDir, siglusPNGVideoOutput, siglusPNGVideoAlpha, siglusPNGVideoFPS)); }
   function startSiglusCombinePNG() { run(() => SiglusCombinePNG(siglusCombinePNGDir, siglusCombinePNGOutput)); }
+  function startSiglusScriptRepack() { run(() => SiglusScriptRepack(siglusScriptRepackScript, siglusScriptRepackText, siglusScriptRepackOutput)); }
+  function startSiglusG00Extract() { run(() => SiglusG00ToPng(siglusG00Batch ? siglusG00Dir : siglusG00File, siglusG00OutputDir, siglusG00XmlPath, siglusG00Batch)); }
+  function startSiglusG00Import() { run(() => SiglusPngToG00(siglusPngBatch ? siglusPngDir : siglusPngFile, siglusPngOutputDir, siglusPngXmlPath, siglusG00Format, siglusPngBatch)); }
 </script>
 
 <div id="app">
@@ -1050,11 +1123,71 @@
           <div class="form-group"><label>OMV de sortie :</label><div class="form-row"><input type="text" bind:value={siglusOMVOutput} readonly /><button class="btn" on:click={browseSiglusOMVOutput}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusOMVPack} disabled={!siglusOGVInput || !siglusOMVOutput}>Pack</button>{/if}</div>
 
+        {:else if siglusSelectedOp === 'omv2avi'}
+          <div class="form-title">Omv2Avi</div>
+          <div class="form-group"><label>Fichier OMV :</label><div class="form-row"><input type="text" bind:value={siglusOMV2AVIInput} readonly /><button class="btn" on:click={browseSiglusOMV2AVIInput}>Select</button></div></div>
+          <div class="form-group"><label>AVI / OGV de sortie :</label><div class="form-row"><input type="text" bind:value={siglusOMV2AVIOutput} readonly /><button class="btn" on:click={browseSiglusOMV2AVIOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusOMV2AVI} disabled={!siglusOMV2AVIInput || !siglusOMV2AVIOutput}>Convert</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'omv_png'}
+          <div class="form-title">OMV → PNG sequence</div>
+          <div class="form-group"><label>Fichier OMV :</label><div class="form-row"><input type="text" bind:value={siglusOMVPNGInput} readonly /><button class="btn" on:click={browseSiglusOMVPNGInput}>Select</button></div></div>
+          <div class="form-group"><label>Dossier PNG :</label><div class="form-row"><input type="text" bind:value={siglusOMVPNGOutputDir} readonly /><button class="btn" on:click={browseSiglusOMVPNGOutputDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusOMVPNG} disabled={!siglusOMVPNGInput || !siglusOMVPNGOutputDir}>Extract</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'png_video'}
+          <div class="form-title">PNG sequence → OMV/OGV</div>
+          <div class="form-group"><label>Dossier PNG :</label><div class="form-row"><input type="text" bind:value={siglusPNGVideoDir} readonly /><button class="btn" on:click={browseSiglusPNGVideoDir}>Select</button></div></div>
+          <div class="form-group"><label>Video de sortie :</label><div class="form-row"><input type="text" bind:value={siglusPNGVideoOutput} readonly /><button class="btn" on:click={browseSiglusPNGVideoOutput}>Select</button></div></div>
+          <div class="form-group">
+            <label>Options :</label>
+            <div class="form-row checkbox-row">
+              <label class="checkbox-label"><input type="checkbox" bind:checked={siglusPNGVideoAlpha} /> Alpha Siglus</label>
+              <span style="min-width:36px;font-size:12px">FPS :</span>
+              <input type="text" bind:value={siglusPNGVideoFPS} placeholder="30" style="width:110px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+            </div>
+          </div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusPNGVideo} disabled={!siglusPNGVideoDir || !siglusPNGVideoOutput}>Encode</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'g00_extract'}
+          <div class="form-title">G00 → PNG (vaconv)</div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusG00Batch} on:change={toggleSiglusG00Batch} /> Batch mode</label></div></div>
+          {#if siglusG00Batch}
+            <div class="form-group"><label>Dossier G00 :</label><div class="form-row"><input type="text" bind:value={siglusG00Dir} readonly /><button class="btn" on:click={browseSiglusG00}>Select</button></div></div>
+            <div class="form-group"><label>Dossier XML :</label><div class="form-row"><input type="text" bind:value={siglusG00XmlPath} readonly placeholder="Auto : dossier de sortie" /><button class="btn" on:click={browseSiglusG00Xml}>Select</button></div></div>
+          {:else}
+            <div class="form-group"><label>Fichier G00 :</label><div class="form-row"><input type="text" bind:value={siglusG00File} readonly /><button class="btn" on:click={browseSiglusG00}>Select</button></div></div>
+            <div class="form-group"><label>Fichier XML :</label><div class="form-row"><input type="text" bind:value={siglusG00XmlPath} readonly placeholder="Auto : même nom que le PNG" /><button class="btn" on:click={browseSiglusG00Xml}>Select</button></div></div>
+          {/if}
+          <div class="form-group"><label>Dossier de sortie :</label><div class="form-row"><input type="text" bind:value={siglusG00OutputDir} readonly /><button class="btn" on:click={browseSiglusG00OutputDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusG00Extract} disabled={(siglusG00Batch ? !siglusG00Dir : !siglusG00File) || !siglusG00OutputDir}>Convert</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'g00_import'}
+          <div class="form-title">PNG → G00 (vaconv)</div>
+          <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusPngBatch} on:change={toggleSiglusPngBatch} /> Batch mode</label></div></div>
+          {#if siglusPngBatch}
+            <div class="form-group"><label>Dossier PNG :</label><div class="form-row"><input type="text" bind:value={siglusPngDir} readonly /><button class="btn" on:click={browseSiglusPng}>Select</button></div></div>
+            <div class="form-group"><label>Dossier XML :</label><div class="form-row"><input type="text" bind:value={siglusPngXmlPath} readonly placeholder="Auto : même dossier que les PNG" /><button class="btn" on:click={browseSiglusPngXml}>Select</button></div></div>
+          {:else}
+            <div class="form-group"><label>Fichier PNG :</label><div class="form-row"><input type="text" bind:value={siglusPngFile} readonly /><button class="btn" on:click={browseSiglusPng}>Select</button></div></div>
+            <div class="form-group"><label>Fichier XML :</label><div class="form-row"><input type="text" bind:value={siglusPngXmlPath} readonly placeholder="Auto : même nom que le PNG" /><button class="btn" on:click={browseSiglusPngXml}>Select</button></div></div>
+          {/if}
+          <div class="form-group"><label>Format G00 :</label><div class="form-row"><select bind:value={siglusG00Format}><option value="auto">Auto</option><option value="0">v0 simple</option><option value="1">v1 compressed</option><option value="2">v2 regions/XML</option></select></div></div>
+          <div class="form-group"><label>Dossier de sortie :</label><div class="form-row"><input type="text" bind:value={siglusPngOutputDir} readonly /><button class="btn" on:click={browseSiglusPngOutputDir}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusG00Import} disabled={(siglusPngBatch ? !siglusPngDir : !siglusPngFile) || !siglusPngOutputDir}>Convert</button>{/if}</div>
+
         {:else if siglusSelectedOp === 'combine_png'}
           <div class="form-title">Combine PNG</div>
           <div class="form-group"><label>Dossier PNG :</label><div class="form-row"><input type="text" bind:value={siglusCombinePNGDir} readonly /><button class="btn" on:click={browseSiglusCombinePNGDir}>Select</button></div></div>
           <div class="form-group"><label>PNG de sortie :</label><div class="form-row"><input type="text" bind:value={siglusCombinePNGOutput} readonly /><button class="btn" on:click={browseSiglusCombinePNGOutput}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusCombinePNG} disabled={!siglusCombinePNGDir || !siglusCombinePNGOutput}>Combine</button>{/if}</div>
+
+        {:else if siglusSelectedOp === 'script_repack'}
+          <div class="form-title">Script Repacker</div>
+          <div class="form-group"><label>Script :</label><div class="form-row"><input type="text" bind:value={siglusScriptRepackScript} readonly /><button class="btn" on:click={browseSiglusScriptRepackScript}>Select</button></div></div>
+          <div class="form-group"><label>Texte UTF-16 :</label><div class="form-row"><input type="text" bind:value={siglusScriptRepackText} readonly /><button class="btn" on:click={browseSiglusScriptRepackText}>Select</button></div></div>
+          <div class="form-group"><label>Script de sortie :</label><div class="form-row"><input type="text" bind:value={siglusScriptRepackOutput} readonly /><button class="btn" on:click={browseSiglusScriptRepackOutput}>Select</button></div></div>
+          <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusScriptRepack} disabled={!siglusScriptRepackScript || !siglusScriptRepackText || !siglusScriptRepackOutput}>Repack</button>{/if}</div>
         {/if}
       </div>
     </div>

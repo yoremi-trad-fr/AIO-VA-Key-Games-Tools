@@ -1,5 +1,10 @@
 package siglus
 
+import (
+	"strconv"
+	"strings"
+)
+
 // key2 est universelle pour tous les jeux SiglusEngine
 var key2 = [256]byte{
 	0x70, 0xF8, 0xA6, 0xB0, 0xA1, 0xA5, 0x28, 0x4F, 0xB5, 0x2F, 0x48, 0xFA, 0xE1, 0xE9, 0x4B, 0xDE,
@@ -47,8 +52,13 @@ var GameKeys = []GameKey{
 	{"Kanon Android", [16]byte{0x57, 0x20, 0xBC, 0x12, 0x57, 0xC0, 0x68, 0xC3, 0x91, 0x39, 0x87, 0x1F, 0xC3, 0x55, 0x95, 0x09}},
 }
 
-// FindKey retourne la clé d'un jeu par son nom (recherche partielle insensible à la casse)
+// FindKey retourne une clé hexadécimale directe ou la clé d'un jeu par son nom.
 func FindKey(name string) (GameKey, bool) {
+	name = strings.TrimSpace(name)
+	if key, ok := ParseHexGameKey(name); ok {
+		return GameKey{Name: "custom hex key", Key: key}, true
+	}
+
 	nameLower := toLower(name)
 	for _, gk := range GameKeys {
 		if contains(toLower(gk.Name), nameLower) {
@@ -56,6 +66,59 @@ func FindKey(name string) (GameKey, bool) {
 		}
 	}
 	return GameKey{}, false
+}
+
+func ParseHexGameKey(input string) ([16]byte, bool) {
+	var key [16]byte
+	tokens := strings.FieldsFunc(input, func(r rune) bool {
+		switch r {
+		case ',', ';', ' ', '\t', '\n', '\r', '[', ']', '{', '}':
+			return true
+		default:
+			return false
+		}
+	})
+
+	if len(tokens) == 16 {
+		for i, token := range tokens {
+			value, ok := parseKeyByte(token)
+			if !ok {
+				return [16]byte{}, false
+			}
+			key[i] = value
+		}
+		return key, true
+	}
+
+	if len(tokens) == 1 {
+		compact := strings.TrimPrefix(strings.TrimPrefix(tokens[0], "0x"), "0X")
+		if len(compact) != 32 {
+			return [16]byte{}, false
+		}
+		for i := 0; i < 16; i++ {
+			value, err := strconv.ParseUint(compact[i*2:i*2+2], 16, 8)
+			if err != nil {
+				return [16]byte{}, false
+			}
+			key[i] = byte(value)
+		}
+		return key, true
+	}
+
+	return [16]byte{}, false
+}
+
+func parseKeyByte(token string) (byte, bool) {
+	token = strings.TrimSpace(token)
+	token = strings.TrimPrefix(strings.TrimPrefix(token, "0x"), "0X")
+	if token == "" || len(token) > 2 {
+		return 0, false
+	}
+	value, err := strconv.ParseUint(token, 16, 8)
+	if err != nil {
+		return 0, false
+	}
+	return byte(value), true
 }
 
 func toLower(s string) string {

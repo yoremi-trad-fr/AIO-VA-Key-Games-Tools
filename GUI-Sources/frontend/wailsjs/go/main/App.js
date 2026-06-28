@@ -218,6 +218,10 @@ export function SiglusDBSRebuild(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['SiglusDBSRebuild'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
+export function SiglusG00ToPng(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SiglusG00ToPng'](arg1, arg2, arg3, arg4);
+}
+
 export function SiglusGameexeExtract(arg1, arg2, arg3) {
   return window['go']['main']['App']['SiglusGameexeExtract'](arg1, arg2, arg3);
 }
@@ -234,12 +238,28 @@ export function SiglusMobilePCKRebuild(arg1, arg2) {
   return window['go']['main']['App']['SiglusMobilePCKRebuild'](arg1, arg2);
 }
 
+export function SiglusOMV2AVI(arg1, arg2) {
+  return window['go']['main']['App']['SiglusOMV2AVI'](arg1, arg2);
+}
+
 export function SiglusOMVCut(arg1, arg2) {
   return window['go']['main']['App']['SiglusOMVCut'](arg1, arg2);
 }
 
+export function SiglusOMVPNG(arg1, arg2) {
+  return window['go']['main']['App']['SiglusOMVPNG'](arg1, arg2);
+}
+
 export function SiglusOMVPack(arg1, arg2) {
   return window['go']['main']['App']['SiglusOMVPack'](arg1, arg2);
+}
+
+export function SiglusPNGVideo(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SiglusPNGVideo'](arg1, arg2, arg3, arg4);
+}
+
+export function SiglusPngToG00(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['SiglusPngToG00'](arg1, arg2, arg3, arg4, arg5);
 }
 
 export function SiglusSSDump(arg1, arg2, arg3, arg4, arg5) {
@@ -264,6 +284,10 @@ export function SiglusSceneExtract(arg1, arg2, arg3) {
 
 export function SiglusSceneRebuild(arg1, arg2, arg3, arg4, arg5, arg6) {
   return window['go']['main']['App']['SiglusSceneRebuild'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function SiglusScriptRepack(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SiglusScriptRepack'](arg1, arg2, arg3);
 }
 
 export function StopProcess() {

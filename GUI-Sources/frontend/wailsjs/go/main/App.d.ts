@@ -110,6 +110,8 @@ export function SiglusDBSExtract(arg1:string,arg2:string,arg3:string,arg4:string
 
 export function SiglusDBSRebuild(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:boolean):Promise<string>;
 
+export function SiglusG00ToPng(arg1:string,arg2:string,arg3:string,arg4:boolean):Promise<string>;
+
 export function SiglusGameexeExtract(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function SiglusGameexeRebuild(arg1:string,arg2:string,arg3:string,arg4:boolean,arg5:number,arg6:boolean):Promise<string>;
@@ -118,9 +120,17 @@ export function SiglusMobilePCKExtract(arg1:string,arg2:string):Promise<string>;
 
 export function SiglusMobilePCKRebuild(arg1:string,arg2:string):Promise<string>;
 
+export function SiglusOMV2AVI(arg1:string,arg2:string):Promise<string>;
+
 export function SiglusOMVCut(arg1:string,arg2:string):Promise<string>;
 
+export function SiglusOMVPNG(arg1:string,arg2:string):Promise<string>;
+
 export function SiglusOMVPack(arg1:string,arg2:string):Promise<string>;
+
+export function SiglusPNGVideo(arg1:string,arg2:string,arg3:boolean,arg4:string):Promise<string>;
+
+export function SiglusPngToG00(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
 
 export function SiglusSSDump(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string):Promise<string>;
 
@@ -133,6 +143,8 @@ export function SiglusSSInjectAll(arg1:string,arg2:string,arg3:string):Promise<s
 export function SiglusSceneExtract(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function SiglusSceneRebuild(arg1:string,arg2:string,arg3:string,arg4:string,arg5:number,arg6:boolean):Promise<string>;
+
+export function SiglusScriptRepack(arg1:string,arg2:string,arg3:string):Promise<string>;
 
 export function StopProcess():Promise<void>;
 

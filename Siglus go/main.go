@@ -19,7 +19,7 @@ func main() {
 	// ─── PCK Extract ───────────────────────────────────────────
 	case "x":
 		if len(os.Args) < 5 {
-			fmt.Println("usage: siglustest x <Scene.pck> <game_name> <output_dir>")
+			fmt.Println("usage: siglustest x <Scene.pck> <game_name|hex_key> <output_dir>")
 			return
 		}
 		gk, ok := findKey(os.Args[3])
@@ -33,7 +33,7 @@ func main() {
 	// ─── PCK Rebuild ───────────────────────────────────────────
 	case "r":
 		if len(os.Args) < 6 {
-			fmt.Println("usage: siglustest r <input_dir> <game_name> <wtfval_hex> <output.pck> [-c <2-17> | -f]")
+			fmt.Println("usage: siglustest r <input_dir> <game_name|hex_key> <wtfval_hex> <output.pck> [-c <2-17> | -f]")
 			return
 		}
 		gk, ok := findKey(os.Args[3])
@@ -115,7 +115,7 @@ func main() {
 	// ─── Gameexe.dat unpack ────────────────────────────────────
 	case "gameexe-x":
 		if len(os.Args) < 5 {
-			fmt.Println("usage: siglustest gameexe-x <Gameexe.dat> <game> <output.ini>")
+			fmt.Println("usage: siglustest gameexe-x <Gameexe.dat> <game|hex_key> <output.ini>")
 			return
 		}
 		gk, ok := findKey(os.Args[3])
@@ -131,7 +131,7 @@ func main() {
 	// ─── Gameexe.dat pack ──────────────────────────────────────
 	case "gameexe-r":
 		if len(os.Args) < 5 {
-			fmt.Println("usage: siglustest gameexe-r <Gameexe.ini> <game> <output.dat> [-p] [-c <2-17> | -f]")
+			fmt.Println("usage: siglustest gameexe-r <Gameexe.ini> <game|hex_key> <output.dat> [-p] [-c <2-17> | -f]")
 			return
 		}
 		gk, ok := findKey(os.Args[3])
@@ -191,6 +191,47 @@ func main() {
 			fmt.Printf("Packed -> %s\n", os.Args[3])
 		}
 
+	case "omv2avi":
+		if len(os.Args) < 3 {
+			fmt.Println("usage: siglustest omv2avi <input.omv> [output.avi|output.ogv] [--ffmpeg ffmpeg.exe]")
+			return
+		}
+		output, ffmpegPath := parseOutputAndFFmpeg(os.Args[3:])
+		result, err := siglus.ConvertOMV2AVI(os.Args[2], output, ffmpegPath)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		} else if result.OMVType == 1 {
+			fmt.Printf("Converted -> %s (%d frames)\n", result.OutputPath, result.FrameCount)
+		} else {
+			fmt.Printf("Extracted -> %s\n", result.OutputPath)
+		}
+
+	case "omv-png":
+		if len(os.Args) < 3 {
+			fmt.Println("usage: siglustest omv-png <input.omv> [output_dir] [--ffmpeg ffmpeg.exe]")
+			return
+		}
+		outputDir, ffmpegPath := parseOutputAndFFmpeg(os.Args[3:])
+		result, err := siglus.ExtractOMVToPNGSequence(os.Args[2], outputDir, ffmpegPath)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		} else {
+			fmt.Printf("Extracted %d PNG frames -> %s\n", result.FrameCount, result.OutputDir)
+		}
+
+	case "png-video":
+		if len(os.Args) < 4 {
+			fmt.Println("usage: siglustest png-video <png_dir> <output.ogv|output.omv> [--alpha] [--fps 30] [--ffmpeg ffmpeg.exe]")
+			return
+		}
+		opts := parsePNGVideoOptions(os.Args[4:])
+		result, err := siglus.EncodePNGSequenceVideo(os.Args[2], os.Args[3], opts)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+		} else {
+			fmt.Printf("Encoded %d PNG frames -> %s\n", result.FrameCount, result.OutputPath)
+		}
+
 	case "combine-png":
 		if len(os.Args) < 3 {
 			fmt.Println("usage: siglustest combine-png <png_dir> [output.png]")
@@ -206,6 +247,23 @@ func main() {
 			fmt.Printf("Combined -> %s\n", output)
 		} else {
 			fmt.Printf("Combined -> %s\n", siglus.DefaultCombinePNGOutput(os.Args[2]))
+		}
+
+	case "script-repack":
+		if len(os.Args) < 4 {
+			fmt.Println("usage: siglustest script-repack <script.ss> <text_utf16.txt> [output.ss]")
+			return
+		}
+		output := ""
+		if len(os.Args) >= 5 {
+			output = os.Args[4]
+		}
+		if err := siglus.RepackScriptText(os.Args[2], os.Args[3], output); err != nil {
+			fmt.Printf("Error: %v\n", err)
+		} else if output != "" {
+			fmt.Printf("Repacked -> %s\n", output)
+		} else {
+			fmt.Printf("Repacked -> %s\n", siglus.DefaultScriptRepackOutput(os.Args[2]))
 		}
 
 	// ─── DBS dump/rebuild ──────────────────────────────────────
@@ -325,6 +383,44 @@ func parseEncodingOption(args []string, fallback string) string {
 	return fallback
 }
 
+func parseOutputAndFFmpeg(args []string) (output string, ffmpegPath string) {
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--ffmpeg":
+			if i+1 < len(args) {
+				ffmpegPath = args[i+1]
+				i++
+			}
+		default:
+			if output == "" {
+				output = args[i]
+			}
+		}
+	}
+	return output, ffmpegPath
+}
+
+func parsePNGVideoOptions(args []string) siglus.PNGVideoOptions {
+	opts := siglus.PNGVideoOptions{FPS: "30"}
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--alpha", "-a":
+			opts.Alpha = true
+		case "--fps", "-r":
+			if i+1 < len(args) {
+				opts.FPS = args[i+1]
+				i++
+			}
+		case "--ffmpeg":
+			if i+1 < len(args) {
+				opts.FFmpegPath = args[i+1]
+				i++
+			}
+		}
+	}
+	return opts
+}
+
 func parseDBSBuildOptions(args []string) siglus.DBSBuildOptions {
 	level, fake, _ := parsePackOptions(args)
 	opts := siglus.DBSBuildOptions{
@@ -361,8 +457,8 @@ func printUsage() {
 	fmt.Println("SiglusPCK tool - LuckSystem Yoremi fork")
 	fmt.Println()
 	fmt.Println("PCK operations:")
-	fmt.Println("  x       <Scene.pck> <game> <output_dir>            Extract .ss files from PCK")
-	fmt.Println("  r       <input_dir> <game> <wtfval> <output.pck>   Rebuild PCK from .ss files")
+	fmt.Println("  x       <Scene.pck> <game|hex_key> <output_dir>    Extract .ss files from PCK")
+	fmt.Println("  r       <input_dir> <game|hex_key> <wtfval> <output.pck> Rebuild PCK from .ss files")
 	fmt.Println()
 	fmt.Println("SS text operations:")
 	fmt.Println("  dump    <file.ss> <output.txt|xlsx>                Dump text from one .ss")
@@ -372,8 +468,8 @@ func printUsage() {
 	fmt.Println("  injectall <ss_dir> <text_or_xlsx_dir> <output_dir> Inject all text into .ss files")
 	fmt.Println()
 	fmt.Println("Gameexe.dat operations:")
-	fmt.Println("  gameexe-x <Gameexe.dat> <game> <output.ini>        Decrypt Gameexe.dat")
-	fmt.Println("  gameexe-r <Gameexe.ini> <game> <output.dat>        Rebuild Gameexe.dat")
+	fmt.Println("  gameexe-x <Gameexe.dat> <game|hex_key> <output.ini> Decrypt Gameexe.dat")
+	fmt.Println("  gameexe-r <Gameexe.ini> <game|hex_key> <output.dat> Rebuild Gameexe.dat")
 	fmt.Println()
 	fmt.Println("DBS operations:")
 	fmt.Println("  dbs-x   <file.dbs> <out.dbs.out> <out.dbs.txt>     Dump DBS data")
@@ -385,6 +481,9 @@ func printUsage() {
 	fmt.Println("  mpck-x  <file.pck> <output_dir>                    Extract mobile PCK")
 	fmt.Println("  mpck-r  <input_dir> <output.pck>                   Rebuild mobile PCK")
 	fmt.Println("  omv-cut <input.omv> <output.ogv>                   Remove OMV header")
+	fmt.Println("  omv2avi <input.omv> [output.avi|output.ogv]        Convert OMV like Omv2Avi")
+	fmt.Println("  omv-png <input.omv> [output_dir]                   Extract OMV frames to PNG")
+	fmt.Println("  png-video <png_dir> <output.ogv|output.omv>        Encode PNG frames to video")
 	fmt.Println()
 	fmt.Println("  keys                                                List available game keys")
 	fmt.Println()

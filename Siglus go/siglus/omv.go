@@ -40,6 +40,12 @@ func PackOMV(inputPath, outputPath string) error {
 	return nil
 }
 
+type OMVBuildOptions struct {
+	EncryptType uint32
+	Width       uint32
+	Height      uint32
+}
+
 type omvOggPage struct {
 	offset     uint32
 	length     uint32
@@ -80,6 +86,10 @@ type theoraInfo struct {
 }
 
 func buildOMV(ogv []byte) ([]byte, error) {
+	return buildOMVWithOptions(ogv, OMVBuildOptions{})
+}
+
+func buildOMVWithOptions(ogv []byte, opts OMVBuildOptions) ([]byte, error) {
 	pages, err := parseOggPages(ogv)
 	if err != nil {
 		return nil, err
@@ -97,9 +107,19 @@ func buildOMV(ogv []byte) ([]byte, error) {
 		return nil, err
 	}
 
+	if opts.EncryptType == 0 {
+		opts.EncryptType = 2
+	}
+	if opts.Width == 0 {
+		opts.Width = info.frameWidth
+	}
+	if opts.Height == 0 {
+		opts.Height = info.frameHeight
+	}
+
 	headerLen := 168
 	out := bytes.NewBuffer(make([]byte, 0, headerLen+len(pageIdx)*28+len(frameIdx)*32+len(ogv)))
-	writeOMVHeader(out, info, serial, uint32(len(pageIdx)), uint32(len(frameIdx)))
+	writeOMVHeader(out, info, serial, uint32(len(pageIdx)), uint32(len(frameIdx)), opts)
 	for _, p := range pageIdx {
 		writeU32(out, p.idx)
 		writeU32(out, p.wtf)
@@ -287,7 +307,7 @@ func indexTheoraFrames(pages []omvOggPage, serial uint32, info theoraInfo) ([]om
 	return pageIdx, frames, nil
 }
 
-func writeOMVHeader(out *bytes.Buffer, info theoraInfo, serial uint32, pageCount, frameCount uint32) {
+func writeOMVHeader(out *bytes.Buffer, info theoraInfo, serial uint32, pageCount, frameCount uint32, opts OMVBuildOptions) {
 	frameTimeUS := uint32(float32(info.fpsDenominator) / float32(info.fpsNumerator) * 1000000.0)
 
 	writeU32(out, 168)
@@ -295,9 +315,9 @@ func writeOMVHeader(out *bytes.Buffer, info theoraInfo, serial uint32, pageCount
 	for i := 0; i < 8; i++ {
 		writeU32(out, 0)
 	}
-	writeU32(out, 2)
-	writeU32(out, info.frameWidth)
-	writeU32(out, info.frameHeight)
+	writeU32(out, opts.EncryptType)
+	writeU32(out, opts.Width)
+	writeU32(out, opts.Height)
 	writeU32(out, 0)
 	writeU32(out, 0)
 	writeU32(out, frameTimeUS)
