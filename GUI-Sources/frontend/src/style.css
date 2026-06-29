@@ -6,6 +6,7 @@
   --text-main: #1a1a1a;
   --text-console: #cdd6f4;
   --text-console-ok: #a6e3a1;
+  --text-console-warn: #f9e2af;
   --text-console-err: #f38ba8;
   --border: #c0c0c0;
   --btn-bg: #e1e1e1;
@@ -84,6 +85,12 @@ html, body {
 
 /* Console */
 .console-wrapper { border-top: 1px solid var(--border); flex-shrink: 0; display: flex; flex-direction: column; }
+.console-wrapper.resizing { user-select: none; }
+.console-resizer {
+  height: 7px; flex-shrink: 0; cursor: row-resize;
+  background: #242438; border-top: 1px solid #3a3a4a; border-bottom: 1px solid #11111b;
+}
+.console-resizer:hover, .console-resizer.resizing { background: #2f5f88; }
 .console-header { display: flex; justify-content: space-between; align-items: center; padding: 4px 10px; background: #2a2a3a; border-bottom: 1px solid #3a3a4a; }
 .console-header span { color: #999; font-size: 11px; font-weight: 600; }
 .console-clear { background: transparent; border: 1px solid #555; color: #999; padding: 1px 8px; font-size: 10px; cursor: pointer; border-radius: 2px; }

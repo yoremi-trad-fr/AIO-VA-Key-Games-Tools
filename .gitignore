@@ -1,0 +1,6 @@
+GUI-Sources/bin/
+GUI-Sources/build/bin/
+GUI-Sources/.gocache/
+GUI-Sources/.gotmp/
+GUI-Sources/frontend/.npm-cache/
+*.exe
