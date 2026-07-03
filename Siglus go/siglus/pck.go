@@ -2,9 +2,11 @@ package siglus
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"unicode/utf16"
 )
@@ -35,6 +37,18 @@ type pckHeader struct {
 
 // sectionNames correspond à la liste sections[] du C
 var sectionNames = []string{"table1", "gvar", "gvarstr", "name1", "name2", "name3", "name4", "fname"}
+
+const pckMetadataFile = "_siglus_pck.json"
+
+type PCKMetadata struct {
+	Format       string `json:"format"`
+	Source       string `json:"source,omitempty"`
+	HeaderLength int32  `json:"header_length"`
+	Encrypt2     int32  `json:"encrypt2"`
+	WTF          int32  `json:"wtf"`
+	WTFHex       string `json:"wtf_hex"`
+	FileCount    int    `json:"file_count"`
+}
 
 // decrypt applique le déchiffrement XOR sur les données.
 // Première passe : XOR avec key2 (universelle, 256 octets).
@@ -106,6 +120,9 @@ func ExtractPCK(pckPath string, key1 [16]byte, outputDir string) error {
 	// Créer le dossier de sortie
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("cannot create output dir: %w", err)
+	}
+	if err := writePCKMetadata(outputDir, pckPath, hdr); err != nil {
+		return err
 	}
 
 	// Extraire les tables binaires (table1, gvar, etc.)
@@ -194,12 +211,24 @@ func RebuildPCK(inputDir string, key1 [16]byte, wtfVal int32, outputPath string)
 	return RebuildPCKWithOptions(inputDir, key1, wtfVal, outputPath, defaultLevel, false)
 }
 
+func RebuildPCKAutoWTF(inputDir string, key1 [16]byte, outputPath string) error {
+	return RebuildPCKAutoWTFWithOptions(inputDir, key1, outputPath, defaultLevel, false)
+}
+
+func RebuildPCKAutoWTFWithOptions(inputDir string, key1 [16]byte, outputPath string, compressionLevel int, fakeCompression bool) error {
+	wtfVal, err := ResolvePCKWTF(inputDir, "auto")
+	if err != nil {
+		return err
+	}
+	return RebuildPCKWithOptions(inputDir, key1, wtfVal, outputPath, compressionLevel, fakeCompression)
+}
+
 // RebuildPCKWithOptions recompile un Scene.pck avec le niveau de compression demandé.
 func RebuildPCKWithOptions(inputDir string, key1 [16]byte, wtfVal int32, outputPath string, compressionLevel int, fakeCompression bool) error {
 	// Lire les tables binaires
 	sections := make([][]byte, len(sectionNames))
 	for i, name := range sectionNames {
-		data, err := os.ReadFile(filepath.Join(inputDir, name+".bin"))
+		data, err := readRebuildInputFile(inputDir, name+".bin")
 		if err != nil {
 			return fmt.Errorf("cannot read %s.bin: %w", name, err)
 		}
@@ -207,11 +236,11 @@ func RebuildPCKWithOptions(inputDir string, key1 [16]byte, wtfVal int32, outputP
 	}
 
 	// Lire fname.bin et name4.bin pour la liste des fichiers
-	fnameBin, err := os.ReadFile(filepath.Join(inputDir, "fname.bin"))
+	fnameBin, err := readRebuildInputFile(inputDir, "fname.bin")
 	if err != nil {
 		return fmt.Errorf("cannot read fname.bin: %w", err)
 	}
-	name4Bin, err := os.ReadFile(filepath.Join(inputDir, "name4.bin"))
+	name4Bin, err := readRebuildInputFile(inputDir, "name4.bin")
 	if err != nil {
 		return fmt.Errorf("cannot read name4.bin: %w", err)
 	}
@@ -275,8 +304,7 @@ func RebuildPCKWithOptions(inputDir string, key1 [16]byte, wtfVal int32, outputP
 	tocEntries := make([]pairVal, fnameCount)
 
 	for i, ne := range names {
-		ssPath := filepath.Join(inputDir, ne.name+".ss")
-		ssData, err := os.ReadFile(ssPath)
+		ssData, err := readRebuildInputFile(inputDir, ne.name+".ss")
 		if err != nil {
 			return fmt.Errorf("cannot read %s.ss: %w", ne.name, err)
 		}
@@ -324,6 +352,105 @@ func RebuildPCKWithOptions(inputDir string, key1 [16]byte, wtfVal int32, outputP
 }
 
 // ─── helpers ───────────────────────────────────────────────
+
+func readRebuildInputFile(inputDir, name string) ([]byte, error) {
+	inputPath := filepath.Join(inputDir, name)
+	data, err := os.ReadFile(inputPath)
+	if err == nil {
+		return data, nil
+	}
+	if !os.IsNotExist(err) {
+		return nil, err
+	}
+
+	baseDir, absErr := filepath.Abs(inputDir)
+	if absErr != nil {
+		baseDir = inputDir
+	}
+	parent := filepath.Dir(baseDir)
+	if parent == baseDir || parent == "" {
+		return nil, err
+	}
+	parentPath := filepath.Join(parent, name)
+	data, parentErr := os.ReadFile(parentPath)
+	if parentErr == nil {
+		fmt.Printf("[INFO] using parent %s\n", name)
+		return data, nil
+	}
+	return nil, err
+}
+
+func ResolvePCKWTF(inputDir, value string) (int32, error) {
+	value = strings.TrimSpace(value)
+	switch strings.ToLower(value) {
+	case "", "auto", "meta", "metadata":
+		meta, err := ReadPCKMetadata(inputDir)
+		if err != nil {
+			return 0, err
+		}
+		return meta.WTF, nil
+	}
+
+	parsed, err := parseInt32Flexible(value)
+	if err != nil {
+		return 0, fmt.Errorf("invalid WTF value %q: %w", value, err)
+	}
+	return parsed, nil
+}
+
+func ReadPCKMetadata(inputDir string) (PCKMetadata, error) {
+	data, err := readRebuildInputFile(inputDir, pckMetadataFile)
+	if err != nil {
+		return PCKMetadata{}, fmt.Errorf("cannot read %s; extract the PCK again or provide WTF manually: %w", pckMetadataFile, err)
+	}
+
+	var meta PCKMetadata
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return PCKMetadata{}, fmt.Errorf("invalid %s: %w", pckMetadataFile, err)
+	}
+	if meta.Format != "" && meta.Format != "siglus-pck-metadata-v1" {
+		return PCKMetadata{}, fmt.Errorf("unsupported PCK metadata format %q", meta.Format)
+	}
+	return meta, nil
+}
+
+func writePCKMetadata(outputDir, pckPath string, hdr *pckHeader) error {
+	meta := PCKMetadata{
+		Format:       "siglus-pck-metadata-v1",
+		Source:       filepath.Base(pckPath),
+		HeaderLength: hdr.HdrLen,
+		Encrypt2:     hdr.Encrypt2,
+		WTF:          hdr.Wtf,
+		WTFHex:       fmt.Sprintf("0x%X", uint32(hdr.Wtf)),
+		FileCount:    int(hdr.FileToc.Size),
+	}
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return fmt.Errorf("cannot encode PCK metadata: %w", err)
+	}
+	data = append(data, '\n')
+	if err := os.WriteFile(filepath.Join(outputDir, pckMetadataFile), data, 0644); err != nil {
+		return fmt.Errorf("cannot write %s: %w", pckMetadataFile, err)
+	}
+	return nil
+}
+
+func parseInt32Flexible(value string) (int32, error) {
+	text := value
+	if strings.HasPrefix(strings.ToLower(text), "0x") {
+		text = text[2:]
+		parsed, err := strconv.ParseUint(text, 16, 32)
+		if err != nil {
+			return 0, err
+		}
+		return int32(parsed), nil
+	}
+	parsed, err := strconv.ParseInt(text, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	return int32(parsed), nil
+}
 
 func readHeader(buf []byte, hdr *pckHeader) error {
 	if len(buf) < 92 {

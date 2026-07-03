@@ -141,6 +141,57 @@ func TestDBSASCIIPackUnpackShiftJIS(t *testing.T) {
 	}
 }
 
+func TestDBSASCIIPackKeepsUnmodifiedGBKRows(t *testing.T) {
+	dir := t.TempDir()
+	rawPath := filepath.Join(dir, "sample.dbs.out")
+	txtPath := filepath.Join(dir, "sample.dbs.txt")
+	dbsPath := filepath.Join(dir, "sample.dbs")
+	unpackedRaw := filepath.Join(dir, "unpacked.dbs.out")
+
+	table := makeTestDBSTable(false)
+	table.rows[0][0].text = "中文"
+	table.rows[1][0].text = "保留"
+	raw, err := buildDBSRaw(table, "gbk")
+	if err != nil {
+		t.Fatalf("build raw: %v", err)
+	}
+	if err := os.WriteFile(rawPath, raw, 0644); err != nil {
+		t.Fatalf("write raw: %v", err)
+	}
+
+	txt := "ASCII\n" +
+		"[0001]\n" +
+		"●01●修改\n\n"
+	if err := os.WriteFile(txtPath, encodeUTF16LEWithBOM(txt), 0644); err != nil {
+		t.Fatalf("write txt: %v", err)
+	}
+
+	if err := PackDBSWithOptions(rawPath, txtPath, dbsPath, DBSPackOptions{
+		CompressionLevel: 17,
+		ANSIEncoding:     "gbk",
+	}); err != nil {
+		t.Fatalf("pack DBS: %v", err)
+	}
+	if err := UnpackDBSWithEncoding(dbsPath, unpackedRaw, filepath.Join(dir, "unpacked.dbs.txt"), true, "gbk"); err != nil {
+		t.Fatalf("unpack DBS: %v", err)
+	}
+
+	unpacked, err := os.ReadFile(unpackedRaw)
+	if err != nil {
+		t.Fatalf("read unpacked raw: %v", err)
+	}
+	parsed, err := parseDBSRaw(unpacked, false, "gbk")
+	if err != nil {
+		t.Fatalf("parse unpacked raw: %v", err)
+	}
+	if got := parsed.rows[0][0].text; got != "修改" {
+		t.Fatalf("row 0 text = %q", got)
+	}
+	if got := parsed.rows[1][0].text; got != "保留" {
+		t.Fatalf("row 1 text = %q", got)
+	}
+}
+
 func TestDBSXLSXDumpAndBuild(t *testing.T) {
 	dir := t.TempDir()
 	sourceDBS := filepath.Join(dir, "source.dbs")

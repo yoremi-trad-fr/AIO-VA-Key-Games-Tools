@@ -32,21 +32,30 @@ func main() {
 
 	// ─── PCK Rebuild ───────────────────────────────────────────
 	case "r":
-		if len(os.Args) < 6 {
-			fmt.Println("usage: siglustest r <input_dir> <game_name|hex_key> <wtfval_hex> <output.pck> [-c <2-17> | -f]")
+		if len(os.Args) < 5 {
+			fmt.Println("usage: siglustest r <input_dir> <game_name|hex_key> [wtfval_hex|auto] <output.pck> [-c <2-17> | -f]")
 			return
 		}
 		gk, ok := findKey(os.Args[3])
 		if !ok {
 			return
 		}
-		var wtfVal int64
-		fmt.Sscanf(os.Args[4], "0x%x", &wtfVal)
-		if wtfVal == 0 {
-			fmt.Sscanf(os.Args[4], "%d", &wtfVal)
+
+		wtfArg := "auto"
+		outputArg := os.Args[4]
+		optionStart := 5
+		if len(os.Args) >= 6 && looksLikeWTFArg(os.Args[4]) {
+			wtfArg = os.Args[4]
+			outputArg = os.Args[5]
+			optionStart = 6
 		}
-		level, fake, _ := parsePackOptions(os.Args[6:])
-		if err := siglus.RebuildPCKWithOptions(os.Args[2], gk.Key, int32(wtfVal), os.Args[5], level, fake); err != nil {
+		wtfVal, err := siglus.ResolvePCKWTF(os.Args[2], wtfArg)
+		if err != nil {
+			fmt.Printf("Error: %v\n", err)
+			return
+		}
+		level, fake, _ := parsePackOptions(os.Args[optionStart:])
+		if err := siglus.RebuildPCKWithOptions(os.Args[2], gk.Key, wtfVal, outputArg, level, fake); err != nil {
 			fmt.Printf("Error: %v\n", err)
 		}
 
@@ -363,6 +372,15 @@ func parsePackOptions(args []string) (level int, fake bool, useKey bool) {
 	return level, fake, useKey
 }
 
+func looksLikeWTFArg(arg string) bool {
+	switch strings.ToLower(strings.TrimSpace(arg)) {
+	case "", "auto", "meta", "metadata":
+		return true
+	}
+	_, err := siglus.ResolvePCKWTF("", arg)
+	return err == nil
+}
+
 func hasOption(args []string, names ...string) bool {
 	for _, arg := range args {
 		for _, name := range names {
@@ -458,7 +476,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("PCK operations:")
 	fmt.Println("  x       <Scene.pck> <game|hex_key> <output_dir>    Extract .ss files from PCK")
-	fmt.Println("  r       <input_dir> <game|hex_key> <wtfval> <output.pck> Rebuild PCK from .ss files")
+	fmt.Println("  r       <input_dir> <game|hex_key> [wtf|auto] <output.pck> Rebuild PCK from .ss files")
 	fmt.Println()
 	fmt.Println("SS text operations:")
 	fmt.Println("  dump    <file.ss> <output.txt|xlsx>                Dump text from one .ss")

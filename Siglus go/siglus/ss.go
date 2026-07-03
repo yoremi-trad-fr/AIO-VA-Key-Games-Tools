@@ -410,6 +410,9 @@ func InjectSSDir(ssDir, tsvDir, outputDir string) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return err
 	}
+	if err := copySceneRebuildInputs(ssDir, outputDir); err != nil {
+		return err
+	}
 	entries, err := os.ReadDir(tsvDir)
 	if err != nil {
 		return err
@@ -438,6 +441,51 @@ func InjectSSDir(ssDir, tsvDir, outputDir string) error {
 	}
 	fmt.Printf("Injected %d files → %s\n", count, outputDir)
 	return nil
+}
+
+func copySceneRebuildInputs(ssDir, outputDir string) error {
+	entries, err := os.ReadDir(ssDir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(entry.Name()))
+		if ext != ".ss" && ext != ".bin" {
+			continue
+		}
+		src := filepath.Join(ssDir, entry.Name())
+		dst := filepath.Join(outputDir, entry.Name())
+		if samePath(src, dst) {
+			continue
+		}
+		if err := copyFileBytes(src, dst); err != nil {
+			return fmt.Errorf("cannot copy %s: %w", entry.Name(), err)
+		}
+	}
+	return nil
+}
+
+func samePath(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA == nil && errB == nil {
+		return strings.EqualFold(filepath.Clean(absA), filepath.Clean(absB))
+	}
+	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+}
+
+func copyFileBytes(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(dst, data, 0644)
 }
 
 // InjectSSWorkbook importe un classeur Excel Siglus Tools dans un dossier de .ss.

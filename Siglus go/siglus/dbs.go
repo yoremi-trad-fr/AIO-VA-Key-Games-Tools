@@ -127,15 +127,15 @@ func PackDBSWithOptions(rawOutPath, txtPath, outputPath string, opts DBSPackOpti
 		return err
 	}
 
-	table, err := parseDBSRaw(raw, isUnicode, "shift-jis")
+	if opts.ANSIEncoding == "" {
+		opts.ANSIEncoding = "gbk"
+	}
+	table, err := parseDBSRaw(raw, isUnicode, opts.ANSIEncoding)
 	if err != nil {
 		return err
 	}
 	applyDBSText(table, txt)
 
-	if opts.ANSIEncoding == "" {
-		opts.ANSIEncoding = "gbk"
-	}
 	rebuiltRaw, err := buildDBSRaw(table, opts.ANSIEncoding)
 	if err != nil {
 		return err

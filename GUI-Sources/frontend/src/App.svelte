@@ -98,6 +98,9 @@
   let consoleResizing = false;
   let consoleResizeStartY = 0;
   let consoleResizeStartHeight = 160;
+  let consoleMenuVisible = false;
+  let consoleMenuX = 0;
+  let consoleMenuY = 0;
   let lsPath = '';
 
   // --- Script fields ---
@@ -273,12 +276,101 @@
   // --- Siglus fields ---
   let siglusSelectedOp = 'scene_extract';
   let siglusGameName = 'Harmonia';
+  const siglusGameKeyOptions = [
+    "神待ちサナちゃん　DL版",
+    "神待ちサナちゃん　PKG版",
+    "円交少女　～陸上部ゆっきーの場合～",
+    "円交少女２　～ＪＫアイドル真鈴の場合～",
+    "清楚で真面目な彼女が、最凶ヤリサーに勧誘されたら…？",
+    "初恋１／１",
+    "初恋１／１ Memorical Collection Version",
+    "星織ユメミライ",
+    "星織ユメミライ Memorical Collection Version",
+    "星織ユメミライ　律佳とあなたの１周年記念、いちゃらぶバースデー",
+    "星織ユメミライ Perfect Edition",
+    "銀色、遥か",
+    "銀色、遥か Memorical Collection Version",
+    "月の彼方で逢いましょう　体験版",
+    "月の彼方で逢いましょう",
+    "月の彼方で逢いましょうSSR 体験版",
+    "月の彼方で逢いましょうSSR DL版",
+    "月の彼方で逢いましょうSSR PKG版",
+    "AIR Android Version",
+    "Kanon Android Version",
+    "Rewrite",
+    "Rewrite Harvest festa!",
+    "Rewriteオカ研活動記録外伝　前編",
+    "Rewriteオカ研活動記録外伝　後編",
+    "Rewrite＋",
+    "Rewrite＋ Steam English Version",
+    "Harmonia",
+    "Angel Beats! -1st beat-",
+    "Summer Pockets",
+    "Summer Pockets Mobile Version",
+    "Summer Pockets Steam English Version",
+    "Summer Pockets REFLECTION BLUE DL版",
+    "Summer Pockets REFLECTION BLUE PKG版",
+    "CLANNAD Steam Chinese Version",
+    "LOOPERS 体験版",
+    "LOOPERS DL版",
+    "LOOPERS Mobile Version",
+    "LUNARiA 体験版",
+    "LUNARiA DL版",
+    "LUNARiA PKG版",
+    "LUNARiA Mobile Version",
+    "終のステラ 体験版",
+    "終のステラ DL版",
+    "LAMUNATION!",
+    "ゆめいろアルエット！",
+    "ましろサマー",
+    "ノーブルリージュ！",
+    "キサラギGOLD★STAR",
+    "はつゆきさくら",
+    "カルマルカ＊サークル",
+    "花咲ワークスプリング！",
+    "フローラル·フローラブ",
+    "金色ラブリッチェ",
+    "歪んだ嘘の恋とレッテル",
+    "星逢のプリズムギア",
+    "地味っ子むちむち委員長とドスケベ調教性活",
+    "勇者と踊れ【体験版】",
+    "勇者と踊れ！",
+    "LOVE・デスティネーション【体験版】",
+    "LOVE・デスティネーション",
+    "アインシュタインより愛を込めて【体験版】",
+    "アインシュタインより愛を込めて",
+    "アインシュタインより愛を込めて APOLLOCRISIS",
+    "妹サポ",
+    "痴漢専用車両～未発達な身体のテニス少女・蛍～【Android版】",
+    "聖娼女～気高きご令嬢・紫苑～【Android版】",
+    "聖娼女～現役アイドル・彩葉～【Android版】",
+    "聖娼女～優しき女子校生・優莉～【Android版】",
+    "聖娼女～バレー部のエース・翼～【Android版】",
+    "聖娼女～人妻女教師・涼香～【Android版】",
+    "キミベタ～キミをベタベタにさせてあげる～【Android版】",
+    "しゅきしゅきだいしゅき！！【Android版】",
+    "沙耶の唄【Android版】",
+    "メアメアメアＳＰ【Android版】",
+    "彼女たちの流儀【Android版】",
+    "Rewrite+",
+    "Rewrite+ Steam English",
+    "Summer Pockets Steam English",
+    "Summer Pockets REFLECTION BLUE DL",
+    "Summer Pockets REFLECTION BLUE PKG",
+    "CLANNAD Steam Chinese",
+    "Planetarian HD Steam",
+    "LOOPERS DL",
+    "LUNARiA DL",
+    "LUNARiA PKG",
+    "AIR Android",
+    "Kanon Android"
+  ];
   let siglusCompressionLevel = 17;
   let siglusFakeCompression = false;
   let siglusScenePck = '';
   let siglusSceneOutputDir = '';
   let siglusSceneInputDir = '';
-  let siglusSceneWtf = '0x166';
+  let siglusSceneWtf = 'auto';
   let siglusSceneOutputPck = '';
   let siglusSSBatch = false;
   let siglusSSInput = '';
@@ -505,11 +597,79 @@
   }
   function clearConsole() { consoleLines = []; pendingLines = []; }
 
+  function selectedConsoleText() {
+    const selection = window.getSelection();
+    const text = selection ? selection.toString() : '';
+    return text.trim() ? text : consoleLines.map(line => line.text).join('\n');
+  }
+
+  async function writeClipboardText(text) {
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+    } catch (_) {
+      // Fallback below for WebView clipboard restrictions.
+    }
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    document.body.removeChild(area);
+  }
+
+  async function readClipboardText() {
+    try {
+      if (navigator.clipboard?.readText) {
+        return await navigator.clipboard.readText();
+      }
+    } catch (_) {
+      return '';
+    }
+    return '';
+  }
+
+  function openConsoleMenu(event) {
+    event.preventDefault();
+    consoleMenuX = event.clientX;
+    consoleMenuY = event.clientY;
+    consoleMenuVisible = true;
+  }
+
+  function closeConsoleMenu() {
+    consoleMenuVisible = false;
+  }
+
+  async function copyConsoleSelection() {
+    await writeClipboardText(selectedConsoleText());
+    closeConsoleMenu();
+  }
+
+  async function copyConsoleAll() {
+    await writeClipboardText(consoleLines.map(line => line.text).join('\n'));
+    closeConsoleMenu();
+  }
+
+  async function pasteConsoleClipboard() {
+    const text = await readClipboardText();
+    if (text.trim()) {
+      text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').forEach(line => addLine(line));
+    }
+    closeConsoleMenu();
+  }
+
   onMount(async () => {
+    window.addEventListener('click', closeConsoleMenu);
+    window.addEventListener('keydown', closeConsoleMenu);
     EventsOn('log', (msg) => addLine(msg));
     lsPath = await GetLuckSystemPath();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3.23 GUI');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.24 GUI');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -534,6 +694,8 @@
     }
   });
   onDestroy(() => {
+    window.removeEventListener('click', closeConsoleMenu);
+    window.removeEventListener('keydown', closeConsoleMenu);
     EventsOff('log');
     stopConsoleResize();
   });
@@ -1079,7 +1241,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.23 GUI</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.24 GUI</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card" on:click={() => activeView = 'siglus'}>
@@ -1112,7 +1274,7 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem v3.23 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT et bridge Siglus/Luca (LuckEngine)<br>
+          <strong>LuckSystem v3.24 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT et bridge Siglus/Luca (LuckEngine)<br>
           <strong>RLdev 2026 v1.3.5</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel, saves (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine, Scene.pck, SS, Gameexe, DBS, mobile PCK, OMV<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
@@ -1144,23 +1306,9 @@
       </div>
       <div class="form-panel">
         <datalist id="siglus-game-options">
-          <option value="Harmonia"></option>
-          <option value="Planetarian HD Steam"></option>
-          <option value="Rewrite"></option>
-          <option value="Rewrite Harvest festa!"></option>
-          <option value="Rewrite+"></option>
-          <option value="Rewrite+ Steam English"></option>
-          <option value="Angel Beats! -1st beat-"></option>
-          <option value="Summer Pockets"></option>
-          <option value="Summer Pockets Steam English"></option>
-          <option value="Summer Pockets REFLECTION BLUE DL"></option>
-          <option value="Summer Pockets REFLECTION BLUE PKG"></option>
-          <option value="CLANNAD Steam Chinese"></option>
-          <option value="LOOPERS DL"></option>
-          <option value="LUNARiA DL"></option>
-          <option value="LUNARiA PKG"></option>
-          <option value="AIR Android"></option>
-          <option value="Kanon Android"></option>
+          {#each siglusGameKeyOptions as gameKey}
+            <option value={gameKey}></option>
+          {/each}
         </datalist>
 
         {#if siglusSelectedOp === 'scene_extract'}
@@ -1174,7 +1322,7 @@
           <div class="form-title">Rebuild Scene.pck</div>
           <div class="form-group"><label>Dossier extrait :</label><div class="form-row"><input type="text" bind:value={siglusSceneInputDir} readonly /><button class="btn" on:click={browseSiglusSceneInputDir}>Select</button></div></div>
           <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
-          <div class="form-group"><label>WTF value :</label><div class="form-row"><input type="text" bind:value={siglusSceneWtf} placeholder="0x166" /></div></div>
+          <div class="form-group"><label>WTF value :</label><div class="form-row"><input type="text" bind:value={siglusSceneWtf} placeholder="auto" /></div></div>
           <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
           <div class="form-group"><label>Scene.pck de sortie :</label><div class="form-row"><input type="text" bind:value={siglusSceneOutputPck} readonly /><button class="btn" on:click={browseSiglusSceneOutputPck}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSceneRebuild} disabled={!siglusSceneInputDir || !siglusGameName || !siglusSceneWtf || !siglusSceneOutputPck}>Rebuild</button>{/if}</div>
@@ -1612,7 +1760,7 @@
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
   <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3.23 GUI</span>
+    <span>LuckSystem 2.3.2 - Yoremi fork v3.24 GUI</span>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="titlebar-path" on:click={locateLuckSystem} title="Click to change">
         {#if lsPath}📁 {lsPath}{:else}⚠ lucksystem.exe not found - Click to locate{/if}
@@ -2009,7 +2157,7 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3.23 GUI</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.24 GUI</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
             Inclut des correctifs CZ (CZ1, CZ4), script, PAK, et une interface subprocess.
@@ -2024,7 +2172,7 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3.23 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.24 GUI · Wails + Svelte</div>
         </div>
       {/if}
     </div>
@@ -2044,9 +2192,21 @@
         <button class="console-clear" on:click={clearConsole}>Clear</button>
       </div>
     </div>
-    <div class="console" bind:this={consoleEl} style:height={consoleHeight + 'px'}>
+    <div class="console" bind:this={consoleEl} style:height={consoleHeight + 'px'} on:contextmenu={openConsoleMenu}>
       {#each consoleLines as line}<div class={line.cls}>{line.text}</div>{/each}
     </div>
+    {#if consoleMenuVisible}
+      <div
+        class="console-context-menu"
+        style={`left:${consoleMenuX}px;top:${consoleMenuY}px`}
+        on:click|stopPropagation
+        on:contextmenu|preventDefault
+      >
+        <button type="button" on:click={copyConsoleSelection}>Copier</button>
+        <button type="button" on:click={copyConsoleAll}>Copier tout</button>
+        <button type="button" on:click={pasteConsoleClipboard}>Coller</button>
+      </div>
+    {/if}
   </div>
   {/if}
 </div>

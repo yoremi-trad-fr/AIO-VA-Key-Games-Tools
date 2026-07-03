@@ -53,32 +53,57 @@ func (a *App) binDir() string {
 	return filepath.Join(filepath.Dir(exePath), "bin")
 }
 
-// findTool searches for a tool binary in bin/ (with and without .exe).
+// findTool searches for a bundled tool in common build/dev locations.
 func (a *App) findTool(name string) string {
-	binDir := a.binDir()
-	// 1. bin/<name>.exe
-	candidate := filepath.Join(binDir, name+".exe")
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate
-	}
-	// 2. bin/<name> (Linux/Mac)
-	candidate = filepath.Join(binDir, name)
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate
-	}
-	// 3. Same dir as GUI exe
-	exePath, _ := os.Executable()
-	if exePath != "" {
-		candidate = filepath.Join(filepath.Dir(exePath), name+".exe")
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
+	var dirs []string
+	addDir := func(dir string) {
+		if dir == "" {
+			return
 		}
-		candidate = filepath.Join(filepath.Dir(exePath), name)
-		if _, err := os.Stat(candidate); err == nil {
-			return candidate
+		dir = filepath.Clean(dir)
+		for _, existing := range dirs {
+			if strings.EqualFold(existing, dir) {
+				return
+			}
+		}
+		dirs = append(dirs, dir)
+	}
+
+	addDir(a.binDir())
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		addDir(exeDir)
+		for dir, i := exeDir, 0; i < 5 && dir != ""; i++ {
+			addDir(filepath.Join(dir, "bin"))
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
 		}
 	}
-	// 4. PATH
+	if wd, err := os.Getwd(); err == nil {
+		addDir(wd)
+		for dir, i := wd, 0; i < 5 && dir != ""; i++ {
+			addDir(filepath.Join(dir, "bin"))
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+	}
+
+	names := []string{name + ".exe", name}
+	for _, dir := range dirs {
+		for _, fileName := range names {
+			candidate := filepath.Join(dir, fileName)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate
+			}
+		}
+	}
+
 	if path, err := exec.LookPath(name); err == nil {
 		return path
 	}
@@ -1818,7 +1843,7 @@ func (a *App) toolPath(toolName string) (string, error) {
 
 	path := a.findTool(binaryName)
 	if path == "" {
-		return "", fmt.Errorf("binaire manquant: %s dans le dossier bin", binaryName)
+		return "", fmt.Errorf("binaire manquant: %s (dossier bin ou PATH)", binaryName)
 	}
 	return path, nil
 }

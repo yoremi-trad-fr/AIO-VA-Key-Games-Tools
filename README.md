@@ -6,7 +6,7 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 
 ## Outils integres
 
-- **LuckSystem 2.3.2 - fork Yoremi v3.23** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, bridge Siglus -> Luca et workflows dialogue TSV.
+- **LuckSystem 2.3.2 - fork Yoremi v3.24** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, bridge Siglus -> Luca et workflows dialogue TSV.
 - **RLdev2026-Go 1.3.5** : extraction/rebuild `SEEN.TXT`, compilation `.org/.ke/.avg`, G00, GAN, NWA, DAT, Babel, edition/export/import de saves RealLive avec `rlsave`.
 - **Siglus Tools 0.61 - Go port** : `Scene.pck`, scripts `.ss`, `Gameexe`, DBS, mobile PCK, OMV et conversions annexes.
 

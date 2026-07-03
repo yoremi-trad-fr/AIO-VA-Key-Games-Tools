@@ -99,6 +99,7 @@ html, body {
   height: 160px; background: var(--bg-console); color: var(--text-console);
   font-family: Consolas, "Cascadia Code", monospace; font-size: 12px; line-height: 1.5;
   padding: 6px 10px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
+  user-select: text;
 }
 .console .line-ok { color: var(--text-console-ok); }
 .console .line-err { color: var(--text-console-err); }
@@ -107,6 +108,28 @@ html, body {
 .console::-webkit-scrollbar { width: 8px; }
 .console::-webkit-scrollbar-track { background: #1e1e2e; }
 .console::-webkit-scrollbar-thumb { background: #45475a; border-radius: 4px; }
+.console-context-menu {
+  position: fixed;
+  z-index: 1000;
+  min-width: 118px;
+  padding: 4px;
+  background: #2a2a3a;
+  border: 1px solid #4a4a5c;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.32);
+}
+.console-context-menu button {
+  display: block;
+  width: 100%;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-console);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.console-context-menu button:hover { background: #3a3a4a; }
 
 /* Running indicator */
 .running-indicator { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #f9e2af; margin-right: 6px; animation: pulse 1s infinite; }
