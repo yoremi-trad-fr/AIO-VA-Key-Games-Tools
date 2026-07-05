@@ -6,9 +6,22 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 
 ## Outils integres
 
-- **LuckSystem 2.3.2 - fork Yoremi v3.24** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, bridge Siglus -> Luca et workflows dialogue TSV.
+- **LuckSystem 2.3.2 - fork Yoremi v3.25** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, preset arabe Font Edit, bridge Siglus -> Luca et workflows dialogue TSV.
 - **RLdev2026-Go 1.3.5** : extraction/rebuild `SEEN.TXT`, compilation `.org/.ke/.avg`, G00, GAN, NWA, DAT, Babel, edition/export/import de saves RealLive avec `rlsave`.
 - **Siglus Tools 0.61 - Go port** : `Scene.pck`, scripts `.ss`, `Gameexe`, DBS, mobile PCK, OMV et conversions annexes.
+
+## Nouveautes RLdev integrees
+
+## Nouveautes LuckSystem 3.25 integrees
+
+- Panneau `PAK (Audio)` avec extraction `MUSIC.PAK`, `VOICE.PAK` et `SYSVOICE.PAK`.
+- Sortie native Ogg, fichier liste compatible reinjection PAK, et copie MP3 optionnelle via FFmpeg.
+- Conversion de dossiers audio `Ogg -> MP3` et `MP3 -> Ogg` depuis l'interface AIO.
+
+## Rattrapage LuckSystem 3.24 integre
+
+- `Font Edit` expose maintenant le preset arabe et les reglages manuels `Set Y`, `Y offset`, `X offset`, `Advance offset` et `Connector bleed`.
+- `PAK (Font) -> Font Replace` prend en charge le remplacement d'un fichier unique par nom interne exact, utile pour `info30`, `info32` ou `明朝30`.
 
 ## Nouveautes RLdev integrees
 

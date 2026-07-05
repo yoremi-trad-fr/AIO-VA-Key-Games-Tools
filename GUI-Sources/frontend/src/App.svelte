@@ -13,6 +13,9 @@
     DefaultKFN,
     SiglusLucaBridge,
     BGMOVIEExtract,
+    MusicPakExtract,
+    VoicePakExtract,
+    AudioConvert,
     ScriptDecompile,
     ScriptCompile,
     PakExtract,
@@ -134,6 +137,17 @@
   let bgMoviePak = '';
   let bgMovieOutput = '';
 
+  // --- PAK Audio fields ---
+  let musicPak = '';
+  let musicOutput = '';
+  let musicToMp3 = false;
+  let voicePak = '';
+  let voiceOutput = '';
+  let voiceToMp3 = false;
+  let audioConvInput = '';
+  let audioConvOutput = '';
+  let audioConvDirection = 'mp3'; // 'mp3' | 'native'
+
   // --- PAK Font fields ---
   let pakFontExtSource = '';
   let pakFontExtCharset = 'UTF-8';
@@ -142,8 +156,10 @@
   let pakFontRepCharset = 'UTF-8';
   let pakFontRepListFile = '';
   let pakFontRepInput = '';
+  let pakFontRepSingleFile = '';
+  let pakFontRepSingleName = '';
   let pakFontRepOutput = '';
-  let pakFontRepUseList = true; // mode par défaut : fichier liste
+  let pakFontRepMode = 'list'; // 'list' | 'dir' | 'single'
 
   // --- Font Extract ---
   let fontExtCz = '';
@@ -160,6 +176,13 @@
   let fontEditCharsetFile = '';
   let fontEditMode = 'append'; // 'redraw' | 'append' | 'insert'
   let fontEditIndex = 0;
+  let fontEditArabicMetrics = false;
+  let fontEditMetricSetYEnabled = false;
+  let fontEditMetricSetY = 0;
+  let fontEditMetricYOffset = 0;
+  let fontEditMetricXOffset = 0;
+  let fontEditMetricWOffset = 0;
+  let fontEditArabicConnectorBleed = 0;
 
   // --- Vietnamese Font Patch ---
   let vietFontRoot = '';
@@ -544,6 +567,10 @@
     { id: 'pak_cg_replace', label: 'CG Replace' },
     { id: '_s2v', label: 'PAK (Video)', section: true },
     { id: 'bgmovie_extract', label: 'BGMOVIE Extract' },
+    { id: '_s2a', label: 'PAK (Audio)', section: true },
+    { id: 'music_extract', label: 'Music Extract' },
+    { id: 'voice_extract', label: 'Voice Extract' },
+    { id: 'audio_convert', label: 'Ogg / MP3 Convert' },
     { id: '_s2b', label: 'PAK (Font)', section: true },
     { id: 'pak_font_extract', label: 'Font Extract' },
     { id: 'pak_font_replace', label: 'Font Replace' },
@@ -669,7 +696,7 @@
     EventsOn('log', (msg) => addLine(msg));
     lsPath = await GetLuckSystemPath();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3.24 GUI');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.25 GUI');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -750,11 +777,28 @@
   async function browseBgMoviePak() { const f = await SelectPakFile(); if (f) bgMoviePak = f; }
   async function browseBgMovieOutput() { const d = await SelectDirectory('Select BGMOVIE output folder'); if (d) bgMovieOutput = d; }
 
+  async function browseMusicPak() { const f = await SelectPakFile(); if (f) musicPak = f; }
+  async function browseMusicOutput() { const d = await SelectDirectory('Select MUSIC output folder'); if (d) musicOutput = d; }
+  async function browseVoicePak() { const f = await SelectPakFile(); if (f) voicePak = f; }
+  async function browseVoiceOutput() { const d = await SelectDirectory('Select VOICE output folder'); if (d) voiceOutput = d; }
+  async function browseAudioConvInput() {
+    const d = await SelectDirectory(audioConvDirection === 'mp3' ? 'Select native Ogg folder' : 'Select MP3 folder');
+    if (d) audioConvInput = d;
+  }
+  async function browseAudioConvOutput() { const d = await SelectDirectory('Select converted audio output folder'); if (d) audioConvOutput = d; }
+
   async function browsePakFontExtSource() { const f = await SelectPakFile(); if (f) pakFontExtSource = f; }
   async function browsePakFontExtOutput() { const d = await SelectDirectory('Dossier d\'extraction'); if (d) pakFontExtOutput = d; }
   async function browsePakFontRepSource() { const f = await SelectPakFile(); if (f) pakFontRepSource = f; }
   async function browsePakFontRepListFile() { const f = await SelectFile('Sélectionner le fichier liste (_list.txt)', '*.txt', 'Fichiers liste'); if (f) pakFontRepListFile = f; }
   async function browsePakFontRepInput() { const d = await SelectDirectory('Dossier des fichiers modifiés'); if (d) pakFontRepInput = d; }
+  async function browsePakFontRepSingleFile() {
+    const f = await SelectFile('Sélectionner le fichier à remplacer', '*.*', 'Tous les fichiers');
+    if (f) {
+      pakFontRepSingleFile = f;
+      if (!pakFontRepSingleName) pakFontRepSingleName = f.split(/[\\/]/).pop();
+    }
+  }
   async function browsePakFontRepOutput() { const f = await SelectSaveFile('Save output PAK', 'FONT.out.PAK', '*.PAK;*.pak', 'PAK files'); if (f) pakFontRepOutput = f; }
 
   async function browseFontExtCz() { const f = await SelectFile('Select font CZ file', '*.*', 'Font CZ files'); if (f) fontExtCz = f; }
@@ -820,6 +864,9 @@
   function startSiglusLucaBridge() { run(() => SiglusLucaBridge(siglusLucaLucaDir, siglusLucaSiglusDir, siglusLucaOutput, siglusLucaTargetCol)); }
   function startPakExtract() { run(() => PakExtract(pakExtSource, pakExtOutput)); }
   function startBgMovieExtract() { run(() => BGMOVIEExtract(bgMoviePak, bgMovieOutput)); }
+  function startMusicExtract() { run(() => MusicPakExtract(musicPak, musicOutput, musicToMp3)); }
+  function startVoiceExtract() { run(() => VoicePakExtract(voicePak, voiceOutput, voiceToMp3)); }
+  function startAudioConvert() { run(() => AudioConvert(audioConvInput, audioConvOutput, audioConvDirection)); }
   function startPakReplace() {
     const listArg = pakRepUseList ? pakRepListFile : '';
     const dirArg  = pakRepUseList ? '' : pakRepInput;
@@ -827,16 +874,27 @@
   }
   function startPakFontExtract() { run(() => PakFontExtract(pakFontExtSource, pakFontExtCharset, pakFontExtOutput)); }
   function startPakFontReplace() {
-    const listArg = pakFontRepUseList ? pakFontRepListFile : '';
-    const dirArg  = pakFontRepUseList ? '' : pakFontRepInput;
-    run(() => PakFontReplace(pakFontRepSource, pakFontRepCharset, dirArg, listArg, pakFontRepOutput));
+    const listArg = pakFontRepMode === 'list' ? pakFontRepListFile : '';
+    const dirArg  = pakFontRepMode === 'dir' ? pakFontRepInput : '';
+    const fileArg = pakFontRepMode === 'single' ? pakFontRepSingleFile : '';
+    const nameArg = pakFontRepMode === 'single' ? pakFontRepSingleName : '';
+    run(() => PakFontReplace(pakFontRepSource, pakFontRepCharset, dirArg, listArg, fileArg, nameArg, pakFontRepOutput));
   }
   function startFontExtract() { run(() => FontExtract(fontExtCz, fontExtInfo, fontExtPng, fontExtCharset)); }
+  function setFontEditArabicPreset(checked) {
+    fontEditArabicMetrics = checked;
+  }
   function startFontEdit() {
     const redraw  = fontEditMode === 'redraw';
     const append  = fontEditMode === 'append';
     const index   = (fontEditMode === 'insert') ? fontEditIndex : 0;
-    run(() => FontEdit(fontEditCz, fontEditInfo, fontEditTtf, fontEditOutCz, fontEditOutInfo, fontEditCharsetFile, redraw, append, index));
+    run(() => FontEdit(
+      fontEditCz, fontEditInfo, fontEditTtf, fontEditOutCz, fontEditOutInfo, fontEditCharsetFile,
+      redraw, append, index,
+      fontEditArabicMetrics, fontEditMetricSetYEnabled, fontEditMetricSetY,
+      fontEditMetricYOffset, fontEditMetricXOffset, fontEditMetricWOffset,
+      fontEditArabicConnectorBleed
+    ));
   }
 
   function getVietYOffsets() {
@@ -1241,7 +1299,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.24 GUI</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.25 GUI</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card" on:click={() => activeView = 'siglus'}>
@@ -1274,12 +1332,12 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem v3.24 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT et bridge Siglus/Luca (LuckEngine)<br>
+          <strong>LuckSystem v3.25 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3 et bridge Siglus/Luca (LuckEngine)<br>
           <strong>RLdev 2026 v1.3.5</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel, saves (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine, Scene.pck, SS, Gameexe, DBS, mobile PCK, OMV<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
         </div>
-        <div class="about-version">v1.0.1 · 2026</div>
+        <div class="about-version">v1.0.2 · 2026</div>
       </div>
     </div>
 
@@ -1760,7 +1818,7 @@
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
   <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3.24 GUI</span>
+    <span>LuckSystem 2.3.2 - Yoremi fork v3.25 GUI</span>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="titlebar-path" on:click={locateLuckSystem} title="Click to change">
         {#if lsPath}📁 {lsPath}{:else}⚠ lucksystem.exe not found - Click to locate{/if}
@@ -1859,6 +1917,30 @@
         <div class="form-group"><label>Output folder:</label><div class="form-row"><input type="text" bind:value={bgMovieOutput} readonly /><button class="btn" on:click={browseBgMovieOutput}>Select</button></div><div class="form-hint">Creates a folder named after the PAK with raw MVT files and a <code>webm</code> subfolder.</div></div>
         <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startBgMovieExtract} disabled={!bgMoviePak || !bgMovieOutput}>Extract Videos</button>{/if}</div>
 
+      <!-- MUSIC PAK EXTRACT -->
+      {:else if selectedOp === 'music_extract'}
+        <div class="form-title">MUSIC.PAK — Audio Extract</div>
+        <div class="form-group"><label>MUSIC.PAK file:</label><div class="form-row"><input type="text" bind:value={musicPak} readonly /><button class="btn" on:click={browseMusicPak}>Select</button></div></div>
+        <div class="form-group"><label>Output folder:</label><div class="form-row"><input type="text" bind:value={musicOutput} readonly /><button class="btn" on:click={browseMusicOutput}>Select</button></div><div class="form-hint">Creates native <code>ogg</code> files and a list file usable by PAK replace.</div></div>
+        <div class="form-group"><label>Conversion:</label><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={musicToMp3} /> Also create MP3 copies</label></div><div class="form-hint">Uses FFmpeg from PATH when MP3 conversion is enabled.</div></div>
+        <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startMusicExtract} disabled={!musicPak || !musicOutput}>Extract Music</button>{/if}</div>
+
+      <!-- VOICE PAK EXTRACT -->
+      {:else if selectedOp === 'voice_extract'}
+        <div class="form-title">VOICE / SYSVOICE.PAK — Audio Extract</div>
+        <div class="form-group"><label>VOICE/SYSVOICE PAK file:</label><div class="form-row"><input type="text" bind:value={voicePak} readonly /><button class="btn" on:click={browseVoicePak}>Select</button></div></div>
+        <div class="form-group"><label>Output folder:</label><div class="form-row"><input type="text" bind:value={voiceOutput} readonly /><button class="btn" on:click={browseVoiceOutput}>Select</button></div><div class="form-hint">Creates native <code>ogg</code> files and a list file usable by PAK replace.</div></div>
+        <div class="form-group"><label>Conversion:</label><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={voiceToMp3} /> Also create MP3 copies</label></div><div class="form-hint">Uses FFmpeg from PATH when MP3 conversion is enabled.</div></div>
+        <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startVoiceExtract} disabled={!voicePak || !voiceOutput}>Extract Voices</button>{/if}</div>
+
+      <!-- AUDIO CONVERT -->
+      {:else if selectedOp === 'audio_convert'}
+        <div class="form-title">Ogg / MP3 — Convert Folder</div>
+        <div class="form-group"><label>Mode:</label><div class="form-row"><select bind:value={audioConvDirection}><option value="mp3">Native Ogg -> MP3</option><option value="native">MP3 -> Native Ogg</option></select></div></div>
+        <div class="form-group"><label>Input folder:</label><div class="form-row"><input type="text" bind:value={audioConvInput} readonly /><button class="btn" on:click={browseAudioConvInput}>Select</button></div><div class="form-hint">Select the folder containing <code>.ogg</code> or <code>.mp3</code> files.</div></div>
+        <div class="form-group"><label>Output folder:</label><div class="form-row"><input type="text" bind:value={audioConvOutput} readonly /><button class="btn" on:click={browseAudioConvOutput}>Select</button></div></div>
+        <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startAudioConvert} disabled={!audioConvInput || !audioConvOutput}>Convert Audio</button>{/if}</div>
+
       <!-- PAK CG REPLACE -->
       {:else if selectedOp === 'pak_cg_replace'}
         <div class="form-title">PAK (CG) — Replace</div>
@@ -1905,15 +1987,20 @@
         <div class="form-group">
           <label>Mode d'entrée :</label>
           <div class="form-row checkbox-row" style="margin-bottom:6px">
-            <label class="checkbox-label"><input type="radio" bind:group={pakFontRepUseList} value={true} /> Fichier liste (<code>*_list.txt</code>)</label>
-            <label class="checkbox-label"><input type="radio" bind:group={pakFontRepUseList} value={false} /> Dossier de fichiers</label>
+            <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="list" /> Fichier liste (<code>*_list.txt</code>)</label>
+            <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="dir" /> Dossier de fichiers</label>
+            <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="single" /> Fichier unique par nom</label>
           </div>
-          {#if pakFontRepUseList}
+          {#if pakFontRepMode === 'list'}
             <div class="form-row"><input type="text" bind:value={pakFontRepListFile} placeholder="FONT__INFO_list.txt" readonly /><button class="btn" on:click={browsePakFontRepListFile}>Select</button></div>
             <div class="form-hint">Fichier liste généré lors de l'extraction (ex : FONT__INFO_list.txt)</div>
-          {:else}
+          {:else if pakFontRepMode === 'dir'}
             <div class="form-row"><input type="text" bind:value={pakFontRepInput} readonly /><button class="btn" on:click={browsePakFontRepInput}>Select</button></div>
-            <div class="form-hint">⚠ Le mode dossier peut échouer selon lucksystem — préférer le fichier liste</div>
+            <div class="form-hint">Remplace uniquement les fichiers du dossier dont le nom existe dans le PAK.</div>
+          {:else}
+            <div class="form-row"><input type="text" bind:value={pakFontRepSingleFile} readonly placeholder="ex : C:\dossier\info30" /><button class="btn" on:click={browsePakFontRepSingleFile}>Select</button></div>
+            <div class="form-row" style="margin-top:6px"><input type="text" bind:value={pakFontRepSingleName} placeholder="Nom interne exact : info30 ou 明朝30" /></div>
+            <div class="form-hint">Recommandé pour Kanon : faites deux remplacements séparés, <code>info30</code> dans <code>FONT__INFO.PAK</code>, puis <code>明朝30</code> dans <code>FONT_MINCHO.PAK</code>.</div>
           {/if}
         </div>
         <div class="form-group"><label>Output PAK :</label><div class="form-row"><input type="text" bind:value={pakFontRepOutput} readonly /><button class="btn" on:click={browsePakFontRepOutput}>Select</button></div></div>
@@ -1922,7 +2009,7 @@
             <span class="running-indicator"></span> Running...
           {:else}
             <button class="btn btn-primary" on:click={startPakFontReplace}
-              disabled={!pakFontRepSource || !pakFontRepOutput || (pakFontRepUseList ? !pakFontRepListFile : !pakFontRepInput)}>
+              disabled={!pakFontRepSource || !pakFontRepOutput || (pakFontRepMode === 'list' ? !pakFontRepListFile : pakFontRepMode === 'dir' ? !pakFontRepInput : (!pakFontRepSingleFile || !pakFontRepSingleName))}>
               Start Replace
             </button>
           {/if}
@@ -1969,6 +2056,28 @@
         {#if fontEditMode !== 'redraw'}
           <div class="form-group"><label>Charset file <span class="required">*</span> :</label><div class="form-row"><input type="text" bind:value={fontEditCharsetFile} readonly /><button class="btn" on:click={browseFontEditCharset}>Select</button></div><div class="form-hint">Fichier texte listant les caractères à ajouter/insérer (ex : accents_fr.txt)</div></div>
         {/if}
+
+        <div class="form-group">
+          <label>Metrics adjustment :</label>
+          <div class="form-row checkbox-row" style="margin-bottom:6px">
+            <label class="checkbox-label"><input type="checkbox" checked={fontEditArabicMetrics} on:change={(e) => setFontEditArabicPreset(e.target.checked)} /> Arabic preset</label>
+            <label class="checkbox-label"><input type="checkbox" bind:checked={fontEditMetricSetYEnabled} /> Set Y</label>
+            {#if fontEditMetricSetYEnabled}
+              <input type="number" bind:value={fontEditMetricSetY} style="width:70px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+            {/if}
+          </div>
+          <div class="form-row" style="gap:8px;flex-wrap:wrap">
+            <span style="font-size:12px">Y offset</span>
+            <input type="number" bind:value={fontEditMetricYOffset} style="width:70px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+            <span style="font-size:12px">X offset</span>
+            <input type="number" bind:value={fontEditMetricXOffset} style="width:70px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+            <span style="font-size:12px">Advance offset</span>
+            <input type="number" bind:value={fontEditMetricWOffset} style="width:70px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+            <span style="font-size:12px">Connector bleed</span>
+            <input type="number" min="0" max="8" bind:value={fontEditArabicConnectorBleed} style="width:70px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+          </div>
+          <div class="form-hint">Arabic preset shifts Arabic glyphs toward the Latin baseline. Connector bleed is experimental and stays manual.</div>
+        </div>
 
         <div class="form-group"><label>Output CZ <span class="required">*</span> :</label><div class="form-row"><input type="text" bind:value={fontEditOutCz} placeholder="ex: C:\dossier\ゴシック26" /><button class="btn" on:click={browseFontEditOutCz}>📁</button></div><div class="form-hint">Tapez le chemin complet sans extension — le bouton sélectionne le dossier</div></div>
         <div class="form-group"><label>Output info <span class="required">*</span> :</label><div class="form-row"><input type="text" bind:value={fontEditOutInfo} placeholder="ex: C:\dossier\info26" /><button class="btn" on:click={browseFontEditOutInfo}>📁</button></div><div class="form-hint">Tapez le chemin complet sans extension — requis pour mettre à jour le compte de caractères</div></div>
@@ -2157,10 +2266,10 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3.24 GUI</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.25 GUI</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
-            Inclut des correctifs CZ (CZ1, CZ4), script, PAK, et une interface subprocess.
+            Inclut des correctifs CZ (CZ1, CZ4), script, PAK, audio Ogg/MP3, et une interface subprocess.
           </div>
           <div class="about-links">
             <div class="about-link-row">
@@ -2172,7 +2281,7 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3.24 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.25 GUI · Wails + Svelte</div>
         </div>
       {/if}
     </div>

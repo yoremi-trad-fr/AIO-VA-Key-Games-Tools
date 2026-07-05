@@ -16,6 +16,7 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"lucksystem/audio"
 	"lucksystem/siglusluca"
 
 	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -732,6 +733,113 @@ func (a *App) BGMOVIEExtract(pakFile, outputRoot string) string {
 }
 
 // ═══════════════════════════════════════
+// AUDIO PAK EXTRACT / CONVERT
+// ═══════════════════════════════════════
+// MUSIC/VOICE PAK entries are native Ogg Vorbis streams.
+
+func (a *App) MusicPakExtract(pakFile, outputDir string, convertMP3 bool) string {
+	return a.audioPakExtract("MUSIC", pakFile, outputDir, convertMP3)
+}
+
+func (a *App) VoicePakExtract(pakFile, outputDir string, convertMP3 bool) string {
+	return a.audioPakExtract("VOICE", pakFile, outputDir, convertMP3)
+}
+
+func (a *App) audioPakExtract(kind, pakFile, outputDir string, convertMP3 bool) string {
+	if pakFile == "" || outputDir == "" {
+		a.logError(kind + " PAK and output directory are required")
+		return "ERROR"
+	}
+
+	a.log("════════════════════════════════════════")
+	a.log("  PAK AUDIO " + kind + " EXTRACT")
+	a.log("════════════════════════════════════════")
+	a.log(fmt.Sprintf("PAK:    %s", pakFile))
+	a.log(fmt.Sprintf("Output: %s", outputDir))
+	if convertMP3 {
+		a.log("MP3:    enabled")
+	} else {
+		a.log("MP3:    disabled")
+	}
+	a.log("────────────────────────────────────────")
+
+	summary, err := audio.ExtractPak(audio.ExtractOptions{
+		PakFile:    pakFile,
+		OutputDir:  outputDir,
+		Kind:       strings.ToLower(kind),
+		ConvertMP3: convertMP3,
+	}, func(line string) {
+		a.log(line)
+	})
+	if err != nil {
+		a.logError(err.Error())
+		a.log("════════════════════════════════════════")
+		return "ERROR"
+	}
+
+	a.log(fmt.Sprintf("List:   %s", summary.ListFile))
+	a.log(fmt.Sprintf("Native: %s", summary.NativeDir))
+	if summary.MP3Dir != "" {
+		a.log(fmt.Sprintf("MP3:    %s", summary.MP3Dir))
+	}
+	result := fmt.Sprintf("%d Ogg extracted, %d MP3 converted, %d errors", summary.Files, summary.Converted, summary.Errors)
+	if summary.Errors > 0 {
+		a.logError(result)
+		a.log("════════════════════════════════════════")
+		return "ERROR"
+	}
+	a.logOK(result)
+	a.log("════════════════════════════════════════")
+	return "OK"
+}
+
+func (a *App) AudioConvert(inputPath, outputDir, direction string) string {
+	if inputPath == "" || outputDir == "" {
+		a.logError("Input audio file/folder and output directory are required")
+		return "ERROR"
+	}
+	if direction == "" {
+		direction = "mp3"
+	}
+	label := "Native Ogg -> MP3"
+	if strings.EqualFold(direction, "native") || strings.EqualFold(direction, "ogg") {
+		label = "MP3 -> Native Ogg"
+	}
+
+	a.log("════════════════════════════════════════")
+	a.log("  AUDIO CONVERT")
+	a.log("════════════════════════════════════════")
+	a.log(fmt.Sprintf("Mode:   %s", label))
+	a.log(fmt.Sprintf("Input:  %s", inputPath))
+	a.log(fmt.Sprintf("Output: %s", outputDir))
+	a.log("────────────────────────────────────────")
+
+	summary, err := audio.ConvertPath(audio.ConvertOptions{
+		InputPath: inputPath,
+		OutputDir: outputDir,
+		Direction: direction,
+		Overwrite: true,
+	}, func(line string) {
+		a.log(line)
+	})
+	if err != nil {
+		a.logError(err.Error())
+		a.log("════════════════════════════════════════")
+		return "ERROR"
+	}
+
+	result := fmt.Sprintf("%d converted, %d skipped, %d errors", summary.Converted, summary.Skipped, summary.Errors)
+	if summary.Errors > 0 {
+		a.logError(result)
+		a.log("════════════════════════════════════════")
+		return "ERROR"
+	}
+	a.logOK(result)
+	a.log("════════════════════════════════════════")
+	return "OK"
+}
+
+// ═══════════════════════════════════════
 // PAK REPLACE
 // ═══════════════════════════════════════
 // Mode dossier : lucksystem pak replace -s PAK -i inputdir -o output.PAK
@@ -813,18 +921,34 @@ func (a *App) PakFontExtract(pakFile, charsetStr, outputDir string) string {
 // ═══════════════════════════════════════
 // PAK FONT REPLACE
 // ═══════════════════════════════════════
-// Mode liste   : lucksystem pak replace -s PAK -i listfile --list -o output.PAK -c charset
-// Mode dossier : lucksystem pak replace -s PAK -i inputdir  -o output.PAK -c charset
+// Mode liste          : lucksystem pak replace -s PAK -i listfile --list -o output.PAK -c charset
+// Mode dossier        : lucksystem pak replace -s PAK -i inputdir  -o output.PAK -c charset
+// Mode fichier par nom: lucksystem pak replace -s PAK -i file --name internalName -o output.PAK -c charset
 
-func (a *App) PakFontReplace(pakSource, charsetStr, inputDir, listFile, outputPak string) string {
+func (a *App) PakFontReplace(pakSource, charsetStr, inputDir, listFile, singleFile, singleName, outputPak string) string {
 	if pakSource == "" || outputPak == "" {
 		a.logError("Original PAK and output PAK are required")
 		return "ERROR"
 	}
 	useList := listFile != ""
 	useDir := inputDir != ""
-	if !useList && !useDir {
-		a.logError("Provide either a list file or a folder as input")
+	useSingle := singleFile != "" || singleName != ""
+	modeCount := 0
+	if useList {
+		modeCount++
+	}
+	if useDir {
+		modeCount++
+	}
+	if useSingle {
+		modeCount++
+	}
+	if modeCount != 1 {
+		a.logError("Provide exactly one input mode: list, folder, or single file by name")
+		return "ERROR"
+	}
+	if useSingle && (singleFile == "" || singleName == "") {
+		a.logError("Single-file mode requires both a file and an internal PAK name")
 		return "ERROR"
 	}
 	if charsetStr == "" {
@@ -839,9 +963,12 @@ func (a *App) PakFontReplace(pakSource, charsetStr, inputDir, listFile, outputPa
 	if useList {
 		a.log(fmt.Sprintf("Mode: list file → %s", listFile))
 		args = []string{"pak", "replace", "-s", pakSource, "-i", listFile, "-l", "-o", outputPak, "-c", charsetStr}
-	} else {
+	} else if useDir {
 		a.log(fmt.Sprintf("Mode: directory → %s", inputDir))
 		args = []string{"pak", "replace", "-s", pakSource, "-i", inputDir, "-o", outputPak, "-c", charsetStr}
+	} else {
+		a.log(fmt.Sprintf("Mode: single file → %s as %s", singleFile, singleName))
+		args = []string{"pak", "replace", "-s", pakSource, "-i", singleFile, "--name", singleName, "-o", outputPak, "-c", charsetStr}
 	}
 
 	err := a.runLuckSystem(args...)
@@ -889,7 +1016,7 @@ func (a *App) FontExtract(czFile, infoFile, outputPng, outputCharset string) str
 // ═══════════════════════════════════════
 // lucksystem font edit -s cz -S info -f ttf -o outcz -O outinfo [-r] [-a] [-i idx] [-c charset]
 
-func (a *App) FontEdit(czFile, infoFile, ttfFile, outputCz, outputInfo, charsetFile string, redraw, appendMode bool, startIndex int) string {
+func (a *App) FontEdit(czFile, infoFile, ttfFile, outputCz, outputInfo, charsetFile string, redraw, appendMode bool, startIndex int, arabicMetrics bool, metricSetYEnabled bool, metricSetY int, metricYOffset int, metricXOffset int, metricWOffset int, arabicConnectorBleed int) string {
 	if czFile == "" || infoFile == "" || ttfFile == "" || outputCz == "" {
 		a.logError("Font CZ, info, TTF, and output CZ are required")
 		return "ERROR"
@@ -913,6 +1040,24 @@ func (a *App) FontEdit(czFile, infoFile, ttfFile, outputCz, outputInfo, charsetF
 		args = append(args, "-a")
 	} else if !redraw && startIndex > 0 {
 		args = append(args, "-i", fmt.Sprintf("%d", startIndex))
+	}
+	if arabicMetrics {
+		args = append(args, "--arabic-metrics")
+	}
+	if metricSetYEnabled {
+		args = append(args, "--metric-set-y", fmt.Sprintf("%d", metricSetY))
+	}
+	if metricYOffset != 0 {
+		args = append(args, "--metric-y-offset", fmt.Sprintf("%d", metricYOffset))
+	}
+	if metricXOffset != 0 {
+		args = append(args, "--metric-x-offset", fmt.Sprintf("%d", metricXOffset))
+	}
+	if metricWOffset != 0 {
+		args = append(args, "--metric-w-offset", fmt.Sprintf("%d", metricWOffset))
+	}
+	if arabicConnectorBleed > 0 {
+		args = append(args, "--arabic-connector-bleed", fmt.Sprintf("%d", arabicConnectorBleed))
 	}
 
 	err := a.runLuckSystem(args...)
