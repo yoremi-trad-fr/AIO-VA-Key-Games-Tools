@@ -6,13 +6,18 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 
 ## Outils integres
 
-- **LuckSystem 2.3.2 - fork Yoremi v3.25** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, preset arabe Font Edit, bridge Siglus -> Luca et workflows dialogue TSV.
+- **LuckSystem 2.3.2 - fork Yoremi v3.26** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, preset arabe Font Edit, bridge Siglus -> Luca et workflows dialogue TSV.
 - **RLdev2026-Go 1.3.5** : extraction/rebuild `SEEN.TXT`, compilation `.org/.ke/.avg`, G00, GAN, NWA, DAT, Babel, edition/export/import de saves RealLive avec `rlsave`.
 - **Siglus Tools 0.61 - Go port** : `Scene.pck`, scripts `.ss`, `Gameexe`, DBS, mobile PCK, OMV et conversions annexes.
 
 ## Nouveautes RLdev integrees
 
-## Nouveautes LuckSystem 3.25 integrees
+## Nouveautes LuckSystem 3.26 integrees
+
+- Correctif LBEE/CZ3 : conservation des 8 octets d'en-tete et placement correct de la table LZW a `HeaderLength`.
+- Import batch PNG -> CZ : les PNG nommes `*.cz3.png` peuvent maintenant correspondre aux entrees PAK sans extension `.cz3`.
+
+## Rattrapage LuckSystem 3.25 integre
 
 - Panneau `PAK (Audio)` avec extraction `MUSIC.PAK`, `VOICE.PAK` et `SYSVOICE.PAK`.
 - Sortie native Ogg, fichier liste compatible reinjection PAK, et copie MP3 optionnelle via FFmpeg.

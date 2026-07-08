@@ -696,7 +696,7 @@
     EventsOn('log', (msg) => addLine(msg));
     lsPath = await GetLuckSystemPath();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3.25 GUI');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.26 GUI');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -1299,7 +1299,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.25 GUI</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.26 GUI</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card" on:click={() => activeView = 'siglus'}>
@@ -1332,12 +1332,12 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem v3.25 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3 et bridge Siglus/Luca (LuckEngine)<br>
+          <strong>LuckSystem v3.26 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3, correctif LBEE CZ3 et bridge Siglus/Luca (LuckEngine)<br>
           <strong>RLdev 2026 v1.3.5</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel, saves (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine, Scene.pck, SS, Gameexe, DBS, mobile PCK, OMV<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
         </div>
-        <div class="about-version">v1.0.2 · 2026</div>
+        <div class="about-version">v1.0.3 · 2026</div>
       </div>
     </div>
 
@@ -1818,7 +1818,7 @@
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
   <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3.25 GUI</span>
+    <span>LuckSystem 2.3.2 - Yoremi fork v3.26 GUI</span>
     <div style="display:flex;align-items:center;gap:10px">
       <span class="titlebar-path" on:click={locateLuckSystem} title="Click to change">
         {#if lsPath}📁 {lsPath}{:else}⚠ lucksystem.exe not found - Click to locate{/if}
@@ -2266,7 +2266,7 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3.25 GUI</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.26 GUI</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
             Inclut des correctifs CZ (CZ1, CZ4), script, PAK, audio Ogg/MP3, et une interface subprocess.
@@ -2281,7 +2281,7 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3.25 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.26 GUI · Wails + Svelte</div>
         </div>
       {/if}
     </div>
