@@ -70,6 +70,10 @@ export function ImageImport(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['ImageImport'](arg1, arg2, arg3, arg4);
 }
 
+export function LucaMenuGenerate(arg1) {
+  return window['go']['main']['App']['LucaMenuGenerate'](arg1);
+}
+
 export function MusicPakExtract(arg1, arg2, arg3) {
   return window['go']['main']['App']['MusicPakExtract'](arg1, arg2, arg3);
 }
@@ -82,8 +86,8 @@ export function PakFontExtract(arg1, arg2, arg3) {
   return window['go']['main']['App']['PakFontExtract'](arg1, arg2, arg3);
 }
 
-export function PakFontReplace(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
-  return window['go']['main']['App']['PakFontReplace'](arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+export function PakFontReplace(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9) {
+  return window['go']['main']['App']['PakFontReplace'](arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9);
 }
 
 export function PakReplace(arg1, arg2, arg3, arg4) {
@@ -196,6 +200,10 @@ export function RldevXmlToGan(arg1, arg2) {
 
 export function ScanGameData() {
   return window['go']['main']['App']['ScanGameData']();
+}
+
+export function ScanLucaMenuKit() {
+  return window['go']['main']['App']['ScanLucaMenuKit']();
 }
 
 export function ScriptCompile(arg1, arg2, arg3, arg4, arg5, arg6, arg7) {
@@ -344,6 +352,10 @@ export function SiglusScriptRepack(arg1, arg2, arg3) {
 
 export function StopProcess() {
   return window['go']['main']['App']['StopProcess']();
+}
+
+export function SupportsLucaMenuDLL() {
+  return window['go']['main']['App']['SupportsLucaMenuDLL']();
 }
 
 export function VietnameseFontPatch(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,6 +51,13 @@ func main() {
 			optionStart = 6
 		}
 		wtfVal, err := siglus.ResolvePCKWTF(os.Args[2], wtfArg)
+		if err != nil && errors.Is(err, os.ErrNotExist) && isAutoWTF(wtfArg) {
+			if fallback, ok := siglus.DefaultPCKWTF(gk.Name); ok {
+				wtfVal = fallback
+				err = nil
+				fmt.Printf("[INFO] %s absent; utilisation du WTF connu 0x%X pour %s\n", "_siglus_pck.json", uint32(wtfVal), gk.Name)
+			}
+		}
 		if err != nil {
 			fmt.Printf("Error: %v\n", err)
 			return
@@ -336,6 +344,15 @@ func main() {
 
 	default:
 		printUsage()
+	}
+}
+
+func isAutoWTF(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "", "auto", "meta", "metadata":
+		return true
+	default:
+		return false
 	}
 }
 

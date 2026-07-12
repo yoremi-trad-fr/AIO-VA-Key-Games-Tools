@@ -34,6 +34,9 @@
     DialogueImportFile,
     DialogueImportBatch,
     VietnameseFontPatch,
+    SupportsLucaMenuDLL,
+    ScanLucaMenuKit,
+    LucaMenuGenerate,
     SelectScriptTxtFile,
     SelectTsvFile,
     SelectSaveTsvFile,
@@ -105,6 +108,17 @@
   let consoleMenuX = 0;
   let consoleMenuY = 0;
   let lsPath = '';
+  let lucaMenuDllAvailable = false;
+  let uiLanguage = 'fr';
+
+  function t(fr, en, language = uiLanguage) {
+    return language === 'en' ? en : fr;
+  }
+
+  function setUiLanguage(language) {
+    uiLanguage = language === 'en' ? 'en' : 'fr';
+    try { localStorage.setItem('lucksystem-ui-language', uiLanguage); } catch (_) {}
+  }
 
   // --- Script fields ---
   let pakFile = '';
@@ -158,8 +172,10 @@
   let pakFontRepInput = '';
   let pakFontRepSingleFile = '';
   let pakFontRepSingleName = '';
+  let pakFontRepAliasFrom = 'info30';
+  let pakFontRepAliasTo = 'info32';
   let pakFontRepOutput = '';
-  let pakFontRepMode = 'list'; // 'list' | 'dir' | 'single'
+  let pakFontRepMode = 'list'; // 'list' | 'dir' | 'single' | 'alias'
 
   // --- Font Extract ---
   let fontExtCz = '';
@@ -198,6 +214,21 @@
   let vietY2 = true;
   let vietY3 = false;
   let vietRedrawLatin = false;
+
+  // --- Luca Menu DLL ---
+  let lucaInventory = null;
+  let lucaGame = '';
+  let lucaSlot = 'en';
+  let lucaPatchName = '';
+  let lucaPatchVersion = '0.1-gui';
+  let lucaExe = '';
+  let lucaOutputDir = '';
+  let lucaBuildDll = true;
+  let lucaProxyChoice = 'version';
+  let lucaCustomPatch = '';
+  let lucaFillMode = 'fr-safe';
+  let lucaSearch = '';
+  let lucaEntries = [];
 
   // --- Image Export ---
   let imgExpBatch = false;
@@ -298,95 +329,85 @@
 
   // --- Siglus fields ---
   let siglusSelectedOp = 'scene_extract';
-  let siglusGameName = 'Harmonia';
+  let siglusGameName = 'Harmonia - Édition physique';
   const siglusGameKeyOptions = [
-    "神待ちサナちゃん　DL版",
-    "神待ちサナちゃん　PKG版",
-    "円交少女　～陸上部ゆっきーの場合～",
-    "円交少女２　～ＪＫアイドル真鈴の場合～",
-    "清楚で真面目な彼女が、最凶ヤリサーに勧誘されたら…？",
-    "初恋１／１",
-    "初恋１／１ Memorical Collection Version",
-    "星織ユメミライ",
-    "星織ユメミライ Memorical Collection Version",
-    "星織ユメミライ　律佳とあなたの１周年記念、いちゃらぶバースデー",
-    "星織ユメミライ Perfect Edition",
-    "銀色、遥か",
-    "銀色、遥か Memorical Collection Version",
-    "月の彼方で逢いましょう　体験版",
-    "月の彼方で逢いましょう",
-    "月の彼方で逢いましょうSSR 体験版",
-    "月の彼方で逢いましょうSSR DL版",
-    "月の彼方で逢いましょうSSR PKG版",
-    "AIR Android Version",
-    "Kanon Android Version",
+    "Kamimachi Sana-chan - Version numérique",
+    "Kamimachi Sana-chan - Édition physique",
+    "Enkou Shoujo: Rikujo-bu Yukki no Baai",
+    "Enkou Shoujo 2: JK Idol Marin no Baai",
+    "Seiso de Majime na Kanojo ga, Saikyou Yarisaa ni Kanyu Sareta...?",
+    "Hatsukoi 1/1",
+    "Hatsukoi 1/1 - Memorical Collection",
+    "Hoshi Ori Yume Mirai",
+    "Hoshi Ori Yume Mirai - Memorical Collection",
+    "Hoshi Ori Yume Mirai: Rikka to Anata no 1 Shuunen Kinen, Icha Love Birthday",
+    "Hoshi Ori Yume Mirai - Perfect Edition",
+    "Gin'iro, Haruka",
+    "Gin'iro, Haruka - Memorical Collection",
+    "Tsuki no Kanata de Aimashou - Démo",
+    "Tsuki no Kanata de Aimashou",
+    "Tsuki no Kanata de Aimashou SSR - Démo",
+    "Tsuki no Kanata de Aimashou SSR - Version numérique",
+    "Tsuki no Kanata de Aimashou SSR - Édition physique",
+    "AIR - Version Android",
+    "Kanon - Version Android",
     "Rewrite",
     "Rewrite Harvest festa!",
-    "Rewriteオカ研活動記録外伝　前編",
-    "Rewriteオカ研活動記録外伝　後編",
-    "Rewrite＋",
-    "Rewrite＋ Steam English Version",
-    "Harmonia",
+    "Rewrite: Chroniques du club de recherche occulte - Partie 1",
+    "Rewrite: Chroniques du club de recherche occulte - Partie 2",
+    "Rewrite+",
+    "Rewrite+ - Steam anglais",
+    "Harmonia - Édition physique",
+    "Harmonia - Édition Steam",
     "Angel Beats! -1st beat-",
     "Summer Pockets",
-    "Summer Pockets Mobile Version",
-    "Summer Pockets Steam English Version",
-    "Summer Pockets REFLECTION BLUE DL版",
-    "Summer Pockets REFLECTION BLUE PKG版",
-    "CLANNAD Steam Chinese Version",
-    "LOOPERS 体験版",
-    "LOOPERS DL版",
-    "LOOPERS Mobile Version",
-    "LUNARiA 体験版",
-    "LUNARiA DL版",
-    "LUNARiA PKG版",
-    "LUNARiA Mobile Version",
-    "終のステラ 体験版",
-    "終のステラ DL版",
+    "Summer Pockets - Version mobile",
+    "Summer Pockets - Steam anglais",
+    "Summer Pockets REFLECTION BLUE - Version numérique",
+    "Summer Pockets REFLECTION BLUE - Édition physique",
+    "CLANNAD - Steam chinois",
+    "LOOPERS - Démo",
+    "LOOPERS - Version numérique",
+    "LOOPERS - Version mobile",
+    "LUNARiA - Démo",
+    "LUNARiA - Version numérique",
+    "LUNARiA - Édition physique",
+    "LUNARiA - Version mobile",
+    "Tsui no Stella - Démo",
+    "Tsui no Stella - Version numérique",
     "LAMUNATION!",
-    "ゆめいろアルエット！",
-    "ましろサマー",
-    "ノーブルリージュ！",
-    "キサラギGOLD★STAR",
-    "はつゆきさくら",
-    "カルマルカ＊サークル",
-    "花咲ワークスプリング！",
-    "フローラル·フローラブ",
-    "金色ラブリッチェ",
-    "歪んだ嘘の恋とレッテル",
-    "星逢のプリズムギア",
-    "地味っ子むちむち委員長とドスケベ調教性活",
-    "勇者と踊れ【体験版】",
-    "勇者と踊れ！",
-    "LOVE・デスティネーション【体験版】",
-    "LOVE・デスティネーション",
-    "アインシュタインより愛を込めて【体験版】",
-    "アインシュタインより愛を込めて",
-    "アインシュタインより愛を込めて APOLLOCRISIS",
-    "妹サポ",
-    "痴漢専用車両～未発達な身体のテニス少女・蛍～【Android版】",
-    "聖娼女～気高きご令嬢・紫苑～【Android版】",
-    "聖娼女～現役アイドル・彩葉～【Android版】",
-    "聖娼女～優しき女子校生・優莉～【Android版】",
-    "聖娼女～バレー部のエース・翼～【Android版】",
-    "聖娼女～人妻女教師・涼香～【Android版】",
-    "キミベタ～キミをベタベタにさせてあげる～【Android版】",
-    "しゅきしゅきだいしゅき！！【Android版】",
-    "沙耶の唄【Android版】",
-    "メアメアメアＳＰ【Android版】",
-    "彼女たちの流儀【Android版】",
-    "Rewrite+",
-    "Rewrite+ Steam English",
-    "Summer Pockets Steam English",
-    "Summer Pockets REFLECTION BLUE DL",
-    "Summer Pockets REFLECTION BLUE PKG",
-    "CLANNAD Steam Chinese",
-    "Planetarian HD Steam",
-    "LOOPERS DL",
-    "LUNARiA DL",
-    "LUNARiA PKG",
-    "AIR Android",
-    "Kanon Android"
+    "Yumeiro Alouette!",
+    "Mashiro Summer",
+    "Noble Riege!",
+    "Kisaragi GOLD STAR",
+    "Hatsuyuki Sakura",
+    "Karumaruka Circle",
+    "Hanasaki Work Spring!",
+    "Floral Flowlove",
+    "Kinkoi: Golden Loveriche",
+    "Yuganda Uso no Koi to Label",
+    "Hoshiai no Prism Gear",
+    "Jimikko Muchimuchi Iinchou to Dosukebe Choukyou Seikatsu",
+    "Yuusha to Odore! - Démo",
+    "Yuusha to Odore!",
+    "LOVE Destination - Démo",
+    "LOVE Destination",
+    "Avec amour, d'Einstein - Démo",
+    "Avec amour, d'Einstein",
+    "Avec amour, d'Einstein - APOLLOCRISIS",
+    "Imouto Support",
+    "Chikan Senyou Sharyou: Mihattatsu na Karada no Tennis Shoujo Hotaru - Version Android",
+    "Seishoujo: Kedakaki Goreijou Shion - Version Android",
+    "Seishoujo: Geneki Idol Iroha - Version Android",
+    "Seishoujo: Yasashiki Joshikousei Yuuri - Version Android",
+    "Seishoujo: Volley-bu no Ace Tsubasa - Version Android",
+    "Seishoujo: Hitozuma Onna Kyoushi Ryouka - Version Android",
+    "KimiBeta: Kimi wo Betabeta ni Sasete Ageru - Version Android",
+    "Shuki Shuki Daisuki!! - Version Android",
+    "Saya no Uta - Version Android",
+    "MareMareMare SP - Version Android",
+    "Kanojotachi no Ryuugi - Version Android",
+    "planetarian HD - Steam"
   ];
   let siglusCompressionLevel = 17;
   let siglusFakeCompression = false;
@@ -579,6 +600,8 @@
     { id: 'font_edit', label: 'Font Edit' },
     { id: '_s3b', label: 'VIET FONT', section: true },
     { id: 'viet_font_patch', label: 'AIR / SG Patch' },
+    { id: '_s3c', label: 'DLL HOOK', section: true },
+    { id: 'luca_menu_dll', label: 'Luca Menu DLL' },
     { id: '_s4', label: 'IMAGE', section: true },
     { id: 'image_export', label: 'Image Export' },
     { id: 'image_import', label: 'Image Import' },
@@ -691,12 +714,14 @@
   }
 
   onMount(async () => {
+    try { setUiLanguage(localStorage.getItem('lucksystem-ui-language') || 'fr'); } catch (_) {}
     window.addEventListener('click', closeConsoleMenu);
     window.addEventListener('keydown', closeConsoleMenu);
     EventsOn('log', (msg) => addLine(msg));
     lsPath = await GetLuckSystemPath();
+    lucaMenuDllAvailable = await SupportsLucaMenuDLL();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3.26 GUI');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.30 GUI');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -878,7 +903,9 @@
     const dirArg  = pakFontRepMode === 'dir' ? pakFontRepInput : '';
     const fileArg = pakFontRepMode === 'single' ? pakFontRepSingleFile : '';
     const nameArg = pakFontRepMode === 'single' ? pakFontRepSingleName : '';
-    run(() => PakFontReplace(pakFontRepSource, pakFontRepCharset, dirArg, listArg, fileArg, nameArg, pakFontRepOutput));
+    const aliasFromArg = pakFontRepMode === 'alias' ? pakFontRepAliasFrom : '';
+    const aliasToArg = pakFontRepMode === 'alias' ? pakFontRepAliasTo : '';
+    run(() => PakFontReplace(pakFontRepSource, pakFontRepCharset, dirArg, listArg, fileArg, nameArg, aliasFromArg, aliasToArg, pakFontRepOutput));
   }
   function startFontExtract() { run(() => FontExtract(fontExtCz, fontExtInfo, fontExtPng, fontExtCharset)); }
   function setFontEditArabicPreset(checked) {
@@ -911,6 +938,177 @@
     run(() => VietnameseFontPatch(vietFontRoot, vietCharsetFile, vietTtfFile, vietOutputDir, vietSlot, vietFamily, getVietYOffsets(), vietRedrawLatin));
   }
 
+  // --- Luca Menu DLL helpers ---
+  function lucaProfiles() { return lucaInventory?.profiles || []; }
+  function currentLucaProfile() { return lucaProfiles().find(p => p.id === lucaGame) || null; }
+  function lucaProxyName() { return lucaProxyChoice; }
+  function lucaGameProfiles() { return lucaProfiles().filter(p => !p.id.includes('/')); }
+
+  function lucaFamilyProfiles() {
+    const profile = currentLucaProfile();
+    if (!profile) return [];
+    const root = (profile.id || '').split('/')[0];
+    return lucaProfiles().filter(p => p.id === root || p.id.startsWith(root + '/'));
+  }
+
+  function lucaSlotEntryCount(profile, slot = lucaSlot) {
+    return (profile?.entries || []).filter(e => e.slot === slot).length;
+  }
+
+  function lucaSlotSourceProfile(slot = lucaSlot) {
+    const current = currentLucaProfile();
+    return lucaFamilyProfiles()
+      .filter(p => lucaSlotEntryCount(p, slot) > 0)
+      .sort((a, b) => {
+        const expected = slot === 'jp' ? '/slots-jp' : slot === 'cn' ? '/slots-cn' : '';
+        const aPreferred = expected && a.id.toLowerCase().endsWith(expected) ? 1 : 0;
+        const bPreferred = expected && b.id.toLowerCase().endsWith(expected) ? 1 : 0;
+        if (aPreferred !== bPreferred) return bPreferred - aPreferred;
+        const countDiff = lucaSlotEntryCount(b, slot) - lucaSlotEntryCount(a, slot);
+        if (countDiff) return countDiff;
+        if (a.id === current?.id) return -1;
+        if (b.id === current?.id) return 1;
+        return a.id.length - b.id.length || a.id.localeCompare(b.id);
+      })[0] || null;
+  }
+
+  function lucaAvailableSlotCount(slot) { return lucaSlotEntryCount(lucaSlotSourceProfile(slot), slot); }
+  function lucaSafeFrenchCount(slot = lucaSlot) {
+    const source = lucaSlotSourceProfile(slot);
+    return (source?.entries || []).filter(e => e.slot === slot && e.safeAuto && e.suggestedFr).length;
+  }
+  function slotLabel(slot) {
+    if (slot === 'jp') return t('Japonais', 'Japanese');
+    if (slot === 'cn') return t('Chinois', 'Chinese');
+    return t('Anglais', 'English');
+  }
+  function byteLen(value) { return new TextEncoder().encode(value || '').length; }
+  function lucaEncodedLen(entry, value = entry?.target || '') {
+    return entry?.encoding === 'utf-16-le' ? String(value).length * 2 : byteLen(value);
+  }
+  function entryTooLong(entry) { return entry.budget >= 0 && lucaEncodedLen(entry) > entry.budget; }
+
+  async function loadLucaInventory() {
+    lucaInventory = await ScanLucaMenuKit();
+    const profiles = lucaProfiles();
+    if (!profiles.length) {
+      addLine('[ERROR] No Luca DLL patch profiles found.');
+      return;
+    }
+    if (!lucaGame || !profiles.find(p => p.id === lucaGame)) {
+      const preferred = profiles.find(p => p.id === 'Kanon') || profiles.find(p => p.id === 'AIR') || profiles[0];
+      lucaGame = preferred.id;
+    }
+    syncLucaProfileDefaults();
+    refreshLucaEntries();
+    addLine('Luca kit: ' + lucaInventory.kitDir);
+    addLine('Luca games: ' + lucaGameProfiles().map(p => p.id).join(', '));
+  }
+
+  function syncLucaProfileDefaults() {
+    const profile = currentLucaProfile();
+    if (!profile) return;
+    lucaPatchName = profile.patchGameName || profile.name || lucaGame;
+    lucaPatchVersion = profile.patchVersion || '0.1-gui';
+    const identity = [profile.id, profile.name, profile.patchGameName, profile.gameExe, lucaGame]
+      .filter(Boolean).join(' ').toUpperCase();
+    lucaProxyChoice = identity.includes('LBEE') || identity.includes('LITTLE BUSTERS') || identity.includes('LITBUS_WIN32')
+      ? 'winmm'
+      : (profile.proxyDll === 'winmm' ? 'winmm' : 'version');
+  }
+
+  function selectLucaProxy(choice, checked) {
+    if (checked) {
+      lucaProxyChoice = choice;
+      lucaBuildDll = true;
+    } else if (lucaProxyChoice === choice) {
+      lucaBuildDll = false;
+    }
+  }
+
+  function refreshLucaEntries(mode = '') {
+    const profile = lucaSlotSourceProfile();
+    if (!profile) { lucaEntries = []; return; }
+    lucaEntries = profile.entries
+      .filter(e => e.slot === lucaSlot)
+      .map(e => ({ ...e, target: e.target || '', include: false }));
+    applyLucaFillMode(mode || lucaFillMode);
+  }
+
+  function setLucaGame(value) {
+    lucaGame = value;
+    lucaExe = '';
+    lucaBuildDll = true;
+    lucaCustomPatch = '';
+    syncLucaProfileDefaults();
+    refreshLucaEntries();
+  }
+  function setLucaSlot(value) { lucaSlot = value; refreshLucaEntries(); }
+
+  function lucaPresetTarget(entry, mode) {
+    if (mode === 'fr' || mode === 'fr-safe') return entry.suggestedFr || '';
+    if (mode === 'en' || mode === 'en-safe') return entry.suggestedEn || '';
+    if (mode === 'ar') return entry.suggestedAr || '';
+    if (mode === 'ru') return entry.suggestedRu || '';
+    if (mode === 'jp') return entry.suggestedJp || '';
+    if (mode === 'cn') return entry.suggestedCn || '';
+    return entry.target || '';
+  }
+
+  function applyLucaFillMode(mode = lucaFillMode) {
+    lucaFillMode = mode;
+    const safeMode = mode === 'fr-safe' || mode === 'en-safe';
+    lucaEntries = lucaEntries.map(entry => {
+      const target = lucaPresetTarget(entry, mode);
+      const fits = entry.budget < 0 || lucaEncodedLen(entry, target) <= entry.budget;
+      const safe = entry.commonCount >= 4 && (mode !== 'fr-safe' || entry.safeAuto);
+      const include = target !== '' && target !== entry.source && fits && (!safeMode || safe);
+      return { ...entry, target, include };
+    });
+  }
+  function setLucaFillMode(value) {
+    if (value === 'ru') { lucaProxyChoice = 'winmm'; lucaBuildDll = true; }
+    applyLucaFillMode(value);
+  }
+  function clearLucaTargets() { lucaEntries = lucaEntries.map(e => ({ ...e, target: '', include: false })); }
+  function lucaVisibleEntries() {
+    const q = lucaSearch.trim().toLowerCase();
+    return lucaEntries.filter(e => !q || [e.source, e.target, e.context, e.note, e.category, e.textKind]
+      .some(v => (v || '').toLowerCase().includes(q)));
+  }
+  function lucaSelectedEntries() { return lucaEntries.filter(e => e.include && e.target); }
+
+  async function browseLucaExe() {
+    const f = await SelectFile(t("Sélectionner l'EXE du jeu Luca", 'Select Luca game EXE'), '*.exe', t('Fichiers exécutables', 'Executable files'));
+    if (f) lucaExe = f;
+  }
+  async function browseLucaOutput() {
+    const d = await SelectDirectory(t('Sélectionner le dossier de sortie DLL Luca', 'Select Luca DLL output folder'));
+    if (d) lucaOutputDir = d;
+  }
+  async function browseLucaCustomPatch() {
+    const f = await SelectFile(t('Sélectionner un fichier PATCHES personnalisé', 'Select custom PATCHES file'), '*.py', t('Fichiers Python PATCHES', 'Python PATCHES files'));
+    if (f) { lucaCustomPatch = f; lucaProxyChoice = 'winmm'; lucaBuildDll = true; }
+  }
+
+  function startLucaGenerate() {
+    const entries = lucaSelectedEntries().map(e => ({
+      rawOffset: e.rawOffset, source: e.source, target: e.target,
+      context: e.context, note: e.note, encoding: e.encoding,
+      include: e.include, budget: e.budget
+    }));
+    if (!entries.length && !lucaCustomPatch) {
+      addLine(t('[ERROR] Aucune chaîne remplie et sélectionnée pour le slot ', '[ERROR] No filled and selected string for the ') + slotLabel(lucaSlot) + t('.', ' slot.'));
+      return;
+    }
+    run(() => LucaMenuGenerate({
+      profileId: lucaGame, gameExe: lucaExe, outputDir: lucaOutputDir,
+      patchGameName: lucaPatchName, patchVersion: lucaPatchVersion,
+      slot: lucaSlot, buildDll: lucaBuildDll, proxyDll: lucaProxyChoice,
+      preset: lucaFillMode, customPatch: lucaCustomPatch, entries
+    }));
+  }
+
   function startImageExport() {
     if (imgExpBatch) run(() => ImageBatchExport(imgExpInput, imgExpOutput));
     else run(() => ImageExport(imgExpInput, imgExpOutput));
@@ -920,7 +1118,11 @@
     else run(() => ImageImport(imgImpSource, imgImpInput, imgImpOutput, imgImpFill));
   }
 
-  function selectOp(op) { if (!op.disabled && !op.section) selectedOp = op.id; }
+  function selectOp(op) {
+    if (op.disabled || op.section) return;
+    selectedOp = op.id;
+    if (selectedOp === 'luca_menu_dll' && !lucaInventory) loadLucaInventory();
+  }
 
   // Reset fields when switching batch mode
   function toggleExpBatch() { imgExpInput = ''; imgExpOutput = ''; }
@@ -1299,7 +1501,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.26 GUI</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.30 GUI</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card" on:click={() => activeView = 'siglus'}>
@@ -1332,7 +1534,7 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem v3.26 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3, correctif LBEE CZ3 et bridge Siglus/Luca (LuckEngine)<br>
+          <strong>LuckSystem v3.30 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3, alias de fontes PAK et générateur Luca Menu DLL<br>
           <strong>RLdev 2026 v1.3.5</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel, saves (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine, Scene.pck, SS, Gameexe, DBS, mobile PCK, OMV<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
@@ -1818,12 +2020,19 @@
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
   <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3.26 GUI</span>
+    <span>LuckSystem 2.3.2 - Yoremi fork v3.30 GUI</span>
     <div style="display:flex;align-items:center;gap:10px">
-      <span class="titlebar-path" on:click={locateLuckSystem} title="Click to change">
-        {#if lsPath}📁 {lsPath}{:else}⚠ lucksystem.exe not found - Click to locate{/if}
+      <label class="ui-language">
+        <span>{t('Interface', 'Interface')}</span>
+        <select value={uiLanguage} on:change={(e) => setUiLanguage(e.target.value)}>
+          <option value="fr">Français</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+      <span class="titlebar-path" on:click={locateLuckSystem} title={t('Cliquer pour modifier', 'Click to change')}>
+        {#if lsPath}📁 {lsPath}{:else}⚠ {t('lucksystem.exe introuvable — cliquer pour le localiser', 'lucksystem.exe not found — click to locate')}{/if}
       </span>
-      <button class="titlebar-back" on:click={() => activeView = 'hub'}>← Retour</button>
+      <button class="titlebar-back" on:click={() => activeView = 'hub'}>← {t('Retour', 'Back')}</button>
     </div>
   </div>
 
@@ -1833,12 +2042,14 @@
       <div class="sidebar-title">Select option:</div>
       <div class="sidebar-list">
         {#each operations as op}
-          {#if op.section}
-            <div class="sidebar-section">{op.label}</div>
-          {:else}
-            <div class="sidebar-item" class:active={selectedOp === op.id} class:disabled={op.disabled} on:click={() => selectOp(op)}>
-              {op.label}
-            </div>
+          {#if lucaMenuDllAvailable || (op.id !== '_s3c' && op.id !== 'luca_menu_dll')}
+            {#if op.section}
+              <div class="sidebar-section">{op.label}</div>
+            {:else}
+              <div class="sidebar-item" class:active={selectedOp === op.id} class:disabled={op.disabled} on:click={() => selectOp(op)}>
+                {op.label}
+              </div>
+            {/if}
           {/if}
         {/each}
       </div>
@@ -1990,6 +2201,7 @@
             <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="list" /> Fichier liste (<code>*_list.txt</code>)</label>
             <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="dir" /> Dossier de fichiers</label>
             <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="single" /> Fichier unique par nom</label>
+            <label class="checkbox-label"><input type="radio" bind:group={pakFontRepMode} value="alias" /> Alias de taille compatible</label>
           </div>
           {#if pakFontRepMode === 'list'}
             <div class="form-row"><input type="text" bind:value={pakFontRepListFile} placeholder="FONT__INFO_list.txt" readonly /><button class="btn" on:click={browsePakFontRepListFile}>Select</button></div>
@@ -1997,10 +2209,20 @@
           {:else if pakFontRepMode === 'dir'}
             <div class="form-row"><input type="text" bind:value={pakFontRepInput} readonly /><button class="btn" on:click={browsePakFontRepInput}>Select</button></div>
             <div class="form-hint">Remplace uniquement les fichiers du dossier dont le nom existe dans le PAK.</div>
-          {:else}
+          {:else if pakFontRepMode === 'single'}
             <div class="form-row"><input type="text" bind:value={pakFontRepSingleFile} readonly placeholder="ex : C:\dossier\info30" /><button class="btn" on:click={browsePakFontRepSingleFile}>Select</button></div>
             <div class="form-row" style="margin-top:6px"><input type="text" bind:value={pakFontRepSingleName} placeholder="Nom interne exact : info30 ou 明朝30" /></div>
             <div class="form-hint">Recommandé pour Kanon : faites deux remplacements séparés, <code>info30</code> dans <code>FONT__INFO.PAK</code>, puis <code>明朝30</code> dans <code>FONT_MINCHO.PAK</code>.</div>
+          {:else}
+            <div class="form-row">
+              <span style="min-width:110px;font-size:12px">Copier depuis :</span>
+              <input type="text" bind:value={pakFontRepAliasFrom} placeholder="info30 ou 明朝30" />
+            </div>
+            <div class="form-row" style="margin-top:6px">
+              <span style="min-width:110px;font-size:12px">Vers :</span>
+              <input type="text" bind:value={pakFontRepAliasTo} placeholder="info32 ou 明朝32" />
+            </div>
+            <div class="form-hint">Adapte les glyphes de la taille source à la géométrie, la largeur et la longueur d'entrée de la taille cible. Testé sur Kanon : <code>info30 → info32</code>, puis <code>明朝30 → 明朝32</code>.</div>
           {/if}
         </div>
         <div class="form-group"><label>Output PAK :</label><div class="form-row"><input type="text" bind:value={pakFontRepOutput} readonly /><button class="btn" on:click={browsePakFontRepOutput}>Select</button></div></div>
@@ -2009,7 +2231,7 @@
             <span class="running-indicator"></span> Running...
           {:else}
             <button class="btn btn-primary" on:click={startPakFontReplace}
-              disabled={!pakFontRepSource || !pakFontRepOutput || (pakFontRepMode === 'list' ? !pakFontRepListFile : pakFontRepMode === 'dir' ? !pakFontRepInput : (!pakFontRepSingleFile || !pakFontRepSingleName))}>
+              disabled={!pakFontRepSource || !pakFontRepOutput || (pakFontRepMode === 'list' ? !pakFontRepListFile : pakFontRepMode === 'dir' ? !pakFontRepInput : pakFontRepMode === 'single' ? (!pakFontRepSingleFile || !pakFontRepSingleName) : (!pakFontRepAliasFrom || !pakFontRepAliasTo))}>
               Start Replace
             </button>
           {/if}
@@ -2156,6 +2378,152 @@
           {/if}
         </div>
 
+      <!-- LUCA MENU DLL -->
+      {:else if selectedOp === 'luca_menu_dll'}
+        <div class="form-title">Luca Menu DLL</div>
+
+        {#if !lucaInventory}
+          <div class="form-actions" style="justify-content:flex-start">
+            <button class="btn btn-primary" on:click={loadLucaInventory}>{t("Charger l'inventaire Luca", 'Load Luca inventory', uiLanguage)}</button>
+          </div>
+        {:else if !currentLucaProfile()}
+          <div class="form-hint form-hint-warn">{t('Aucun profil Luca disponible dans le kit.', 'No Luca profile is available in the kit.', uiLanguage)}</div>
+        {:else}
+          <div class="form-group">
+            <label>{t('Profil et slot :', 'Profile and slot:', uiLanguage)}</label>
+            <div class="form-row">
+              <select bind:value={lucaGame} on:change={() => setLucaGame(lucaGame)}>
+                {#each lucaGameProfiles() as profile}
+                  <option value={profile.id}>{profile.name} ({profile.id})</option>
+                {/each}
+              </select>
+              <select value={lucaSlot} on:change={(e) => setLucaSlot(e.target.value)}>
+                <option value="en">{t('Slot anglais', 'English slot', uiLanguage)}</option>
+                <option value="jp">{t('Slot japonais', 'Japanese slot', uiLanguage)}</option>
+                <option value="cn">{t('Slot chinois', 'Chinese slot', uiLanguage)}</option>
+              </select>
+              <button class="btn" on:click={loadLucaInventory}>Rescan</button>
+            </div>
+            <div class="form-hint">
+              EN {lucaAvailableSlotCount('en')} · JP {lucaAvailableSlotCount('jp')} · CN {lucaAvailableSlotCount('cn')} · {t('FR sûr sur ce slot', 'safe FR strings in this slot', uiLanguage)} {lucaSafeFrenchCount()}
+            </div>
+            {#if lucaSlotSourceProfile() && lucaSlotSourceProfile().id !== currentLucaProfile().id}
+              <div class="form-hint">{t('Inventaire du slot chargé depuis', 'Slot inventory loaded from', uiLanguage)} {lucaSlotSourceProfile().id}.</div>
+            {:else if !lucaSlotSourceProfile()}
+              <div class="form-hint form-hint-warn">{t('Aucune chaîne du slot', 'No strings from the', uiLanguage)} {slotLabel(lucaSlot)} {t("n'est encore inventoriée pour ce jeu.", 'slot have been inventoried for this game yet.', uiLanguage)}</div>
+            {/if}
+          </div>
+
+          <div class="form-group">
+            <label>{t('EXE du jeu', 'Game EXE', uiLanguage)} <span class="required">*</span> :</label>
+            <div class="form-row"><input type="text" bind:value={lucaExe} placeholder={currentLucaProfile().gameExe || t('Sélectionnez le véritable EXE du jeu', 'Select the actual game EXE', uiLanguage)} /><button class="btn" on:click={browseLucaExe}>Select</button></div>
+            <div class="form-hint">{t("Sélectionnez l'EXE présent dans le dossier du jeu afin de vérifier les offsets et la taille des chaînes.", 'Select the EXE located in the game folder so offsets and string sizes can be verified.', uiLanguage)}</div>
+          </div>
+
+          <div class="form-group">
+            <label>{t('Dossier de sortie', 'Output folder', uiLanguage)} <span class="required">*</span> :</label>
+            <div class="form-row"><input type="text" bind:value={lucaOutputDir} readonly /><button class="btn" on:click={browseLucaOutput}>Select</button></div>
+            <div class="form-hint">{t('Le dossier recevra', 'The folder will receive', uiLanguage)} {lucaCustomPatch ? 'mixed_patches.py, custom_patches.py' : lucaFillMode === 'ru' ? 'mixed_patches.py, russian_preset.py' : 'patches.py'}, patches.h, patches.csv, version.c, {lucaProxyName()}.def {t('et', 'and', uiLanguage)} {lucaProxyName()}.dll {t('si la compilation réussit.', 'if compilation succeeds.', uiLanguage)}</div>
+          </div>
+
+          {#if (lucaGame || '').split('/')[0].toUpperCase() === 'LBEE'}
+            <div class="form-group">
+              <label>{t('Fichier PATCHES personnalisé (facultatif) :', 'Custom PATCHES file (optional):', uiLanguage)}</label>
+              <div class="form-row">
+                <input type="text" bind:value={lucaCustomPatch} readonly placeholder={t('russian_preset.py ou autre fichier contenant PATCHES', 'russian_preset.py or another file containing PATCHES', uiLanguage)} />
+                <button class="btn" on:click={browseLucaCustomPatch}>Select</button>
+                {#if lucaCustomPatch}<button class="btn" on:click={() => lucaCustomPatch = ''}>{t('Vider', 'Clear', uiLanguage)}</button>{/if}
+              </div>
+              <div class="form-hint">{t('Si renseigné, ce fichier remplace le preset russe interne. Le dossier de sortie reste uniquement la destination des fichiers générés.', 'When selected, this file replaces the built-in Russian preset. The output folder remains only the destination for generated files.', uiLanguage)}</div>
+            </div>
+          {/if}
+
+          <div class="form-group">
+            <label>{t('Identité du patch :', 'Patch identity:', uiLanguage)}</label>
+            <div class="form-row">
+              <input type="text" bind:value={lucaPatchName} placeholder={t('Nom affiché dans luckproxy.log', 'Name shown in luckproxy.log', uiLanguage)} />
+              <input type="text" bind:value={lucaPatchVersion} placeholder="Version" style="max-width:140px" />
+            </div>
+          </div>
+
+          <div class="form-group luca-proxy-group">
+            <label>{t('DLL proxy à compiler :', 'Proxy DLL to compile:', uiLanguage)}</label>
+            <div class="form-row checkbox-row luca-proxy-row">
+              <label class:luca-proxy-selected={lucaBuildDll && lucaProxyChoice === 'version'} class="checkbox-label luca-proxy-option">
+                <input type="checkbox" checked={lucaBuildDll && lucaProxyChoice === 'version'} on:change={(e) => selectLucaProxy('version', e.target.checked)} />
+                <span><strong>version.dll</strong><small>Proxy Luca standard · x64</small></span>
+              </label>
+              <label class:luca-proxy-selected={lucaBuildDll && lucaProxyChoice === 'winmm'} class="checkbox-label luca-proxy-option">
+                <input type="checkbox" checked={lucaBuildDll && lucaProxyChoice === 'winmm'} on:change={(e) => selectLucaProxy('winmm', e.target.checked)} />
+                <span><strong>winmm.dll</strong><small>Little Busters! · PE32/x86</small></span>
+              </label>
+            </div>
+            <div class="form-hint">{t("Choix exclusif : cocher une DLL décoche automatiquement l'autre. Décochez la sélection active pour générer le kit sans compiler.", 'Exclusive choice: selecting one DLL automatically clears the other. Clear the active selection to generate the kit without compiling.', uiLanguage)}</div>
+            {#if lucaProxyChoice === 'winmm'}
+              <div class="form-hint form-hint-warn"><strong>{t('LBEE sélectionné :', 'LBEE selected:', uiLanguage)}</strong> {t('la GUI compilera', 'the GUI will compile', uiLanguage)} <code>winmm.dll</code> {t('en 32 bits. Installez uniquement cette DLL à côté de', 'as 32-bit. Install only this DLL next to', uiLanguage)} <code>LITBUS_WIN32.exe</code> ; {t("n'utilisez pas", 'do not use', uiLanguage)} <code>version.dll</code>.</div>
+            {/if}
+          </div>
+
+          <div class="form-group">
+            <label>{t('Langue à injecter :', 'Language to inject:', uiLanguage)}</label>
+            <div class="form-row checkbox-row luca-toolbar">
+              <select value={lucaFillMode} on:change={(e) => setLucaFillMode(e.target.value)}>
+                <option value="fr">FR</option>
+                <option value="fr-safe">{t('FR (sûr)', 'FR (safe)', uiLanguage)}</option>
+                <option value="en">ENG</option>
+                <option value="en-safe">{t('ENG (sûr)', 'ENG (safe)', uiLanguage)}</option>
+                <option value="ar">{t('Arabe', 'Arabic', uiLanguage)}</option>
+                <option value="ru">{t('Russe (LBEE)', 'Russian (LBEE)', uiLanguage)}</option>
+                <option value="jp">{t('Japonais', 'Japanese', uiLanguage)}</option>
+                <option value="cn">{t('Chinois', 'Chinese', uiLanguage)}</option>
+              </select>
+              <button class="btn" on:click={clearLucaTargets}>{t('Vider', 'Clear', uiLanguage)}</button>
+            </div>
+            <div class="form-hint">{t('Les modes sûrs limitent la sélection aux chaînes communes aux quatre jeux et compatibles avec le budget du slot.', 'Safe modes limit selection to strings shared by all four games and compatible with the slot budget.', uiLanguage)}</div>
+          </div>
+
+          <div class="form-group">
+            <label>{t('Filtre :', 'Filter:', uiLanguage)}</label>
+            <div class="form-row">
+              <input type="text" bind:value={lucaSearch} placeholder={t('source, cible, contexte...', 'source, target, context...', uiLanguage)} />
+              <span class="luca-count">{lucaSelectedEntries().length} {t('sélectionnée(s)', 'selected', uiLanguage)} · {lucaVisibleEntries().length} {t('visible(s)', 'visible', uiLanguage)} · slot {slotLabel(lucaSlot)}</span>
+            </div>
+          </div>
+
+          <div class="luca-table">
+            <div class="luca-row luca-head">
+              <div></div>
+              <div>{t('Contexte', 'Context', uiLanguage)}</div>
+              <div>Source</div>
+              <div>{t('Cible', 'Target', uiLanguage)}</div>
+              <div>Budget</div>
+            </div>
+            {#each lucaVisibleEntries() as entry (entry.rawOffset + entry.source)}
+              <div class="luca-row" class:entry-warn={entryTooLong(entry)}>
+                <div class="luca-check"><input type="checkbox" bind:checked={entry.include} /></div>
+                <div>
+                  <div class="luca-context">{entry.context}</div>
+                  <div class="luca-meta">{entry.rawOffset} · {entry.encoding || 'utf-8'} · {entry.textKind}{entry.commonCount ? ` · ${entry.commonCount}/4` : ''}{entry.risk ? ` · ${entry.risk}` : ''}</div>
+                </div>
+                <div class="luca-source">{entry.source}</div>
+                <div><input type="text" bind:value={entry.target} placeholder={entry.suggestedFr || t('Traduction', 'Translation', uiLanguage)} /></div>
+                <div class="luca-budget">{lucaEncodedLen(entry)} / {entry.budget >= 0 ? entry.budget : '?'}</div>
+              </div>
+            {/each}
+          </div>
+
+          <div class="form-actions">
+            {#if running}
+              <span class="running-indicator"></span> Running...
+            {:else}
+              <button class="btn btn-primary" on:click={startLucaGenerate}
+                disabled={!lucaExe || !lucaOutputDir || (lucaSelectedEntries().length === 0 && !lucaCustomPatch)}>
+                {t('Générer le kit DLL', 'Generate DLL kit', uiLanguage)}
+              </button>
+            {/if}
+          </div>
+        {/if}
+
       <!-- IMAGE EXPORT -->
       {:else if selectedOp === 'image_export'}
         <div class="form-title">Image Export (CZ → PNG)</div>
@@ -2266,7 +2634,7 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3.26 GUI</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.30 GUI</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
             Inclut des correctifs CZ (CZ1, CZ4), script, PAK, audio Ogg/MP3, et une interface subprocess.
@@ -2281,7 +2649,7 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3.26 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.30 GUI · Wails + Svelte</div>
         </div>
       {/if}
     </div>

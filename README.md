@@ -6,13 +6,31 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 
 ## Outils integres
 
-- **LuckSystem 2.3.2 - fork Yoremi v3.26** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, preset arabe Font Edit, bridge Siglus -> Luca et workflows dialogue TSV.
+- **LuckSystem 2.3.2 - fork Yoremi v3.30** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, bridge Siglus -> Luca, workflows dialogue TSV et generateur Luca Menu DLL.
 - **RLdev2026-Go 1.3.5** : extraction/rebuild `SEEN.TXT`, compilation `.org/.ke/.avg`, G00, GAN, NWA, DAT, Babel, edition/export/import de saves RealLive avec `rlsave`.
 - **Siglus Tools 0.61 - Go port** : `Scene.pck`, scripts `.ss`, `Gameexe`, DBS, mobile PCK, OMV et conversions annexes.
 
+## Profils Siglus Harmonia
+
+- Deux profils distincts sont proposes : `Harmonia - Édition physique` et
+  `Harmonia - Édition Steam`. Ils partagent la meme cle de chiffrement.
+- Les deux PCK d'origine utilisent le WTF `0x166`. Lors d'un rebuild en mode
+  `auto`, cette valeur sert de secours si `_siglus_pck.json` est absent.
+- Le simple alias `Harmonia` reste accepte et selectionne l'edition physique.
+- La liste affiche des titres romanises et des libelles d'edition en francais ;
+  les anciens titres japonais restent acceptes dans les commandes.
+
 ## Nouveautes RLdev integrees
 
-## Nouveautes LuckSystem 3.26 integrees
+## Nouveautes LuckSystem 3.30 integrees
+
+- Generateur `Luca Menu DLL` pour AIR, Kanon, Harmonia HD, Loopers et Little Busters! English Edition.
+- Proxy `version.dll` x64 ou `winmm.dll` x86 pour LBEE, avec verification des offsets et du budget des chaines.
+- Presets d'injection FR/ENG surs, arabe, russe, japonais et chinois ; fichier `PATCHES` personnalise pour LBEE.
+- Selecteur persistant francais/anglais pour le nouveau workflow.
+- `PAK (Font) -> Font Replace` sait maintenant creer un alias interne, par exemple `info30` vers `info32`.
+
+## Nouveautes LuckSystem 3.26 conservees
 
 - Correctif LBEE/CZ3 : conservation des 8 octets d'en-tete et placement correct de la table LZW a `HeaderLength`.
 - Import batch PNG -> CZ : les PNG nommes `*.cz3.png` peuvent maintenant correspondre aux entrees PAK sans extension `.cz3`.

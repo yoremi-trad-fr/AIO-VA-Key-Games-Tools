@@ -877,9 +877,15 @@ func adjustHeaderOffsets(buf []byte, threshold, delta int) {
 
 // GameNameList retourne les noms de jeux disponibles
 func GameNameList() []string {
-	names := make([]string, len(GameKeys))
-	for i, gk := range GameKeys {
-		names[i] = gk.Name
+	names := make([]string, 0, len(GameKeys))
+	seen := make(map[string]bool, len(GameKeys))
+	for _, gk := range GameKeys {
+		name := displayGameKeyName(gk.Name)
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		names = append(names, name)
 	}
 	return names
 }

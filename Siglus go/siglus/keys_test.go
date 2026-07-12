@@ -1,6 +1,9 @@
 package siglus
 
-import "testing"
+import (
+	"testing"
+	"unicode"
+)
 
 func TestFindKeyAcceptsCommaSeparatedHex(t *testing.T) {
 	got, ok := FindKey("0x7F, 0x0D, 0x88, 0x21, 0x7B, 0xEA, 0x41, 0xF3, 0xAA, 0x03, 0xA7, 0x2F, 0xEB, 0x60, 0xAD, 0x2E")
@@ -27,8 +30,72 @@ func TestFindKeyKeepsNameLookup(t *testing.T) {
 	if !ok {
 		t.Fatal("expected Harmonia key")
 	}
-	if got.Name != "Harmonia" {
+	if got.Name != "Harmonia - Édition physique" {
 		t.Fatalf("name = %q", got.Name)
+	}
+}
+
+func TestFindKeyDistinguishesHarmoniaEditions(t *testing.T) {
+	physical, ok := FindKey("Harmonia - Édition physique")
+	if !ok {
+		t.Fatal("expected physical Harmonia key")
+	}
+	steam, ok := FindKey("Harmonia - Édition Steam")
+	if !ok {
+		t.Fatal("expected Steam Harmonia key")
+	}
+	if physical.Name == steam.Name {
+		t.Fatalf("editions must have distinct names: %q", physical.Name)
+	}
+	if physical.Key != steam.Key {
+		t.Fatalf("Harmonia editions must share the same encryption key")
+	}
+}
+
+func TestFindKeyAcceptsHarmoniaEditionAliases(t *testing.T) {
+	tests := map[string]string{
+		"Harmonia physique": "Harmonia - Édition physique",
+		"Harmonia physical": "Harmonia - Édition physique",
+		"Harmonia Steam":    "Harmonia - Édition Steam",
+	}
+	for alias, want := range tests {
+		got, ok := FindKey(alias)
+		if !ok || got.Name != want {
+			t.Fatalf("FindKey(%q) = %q, %v; want %q", alias, got.Name, ok, want)
+		}
+	}
+}
+
+func TestFindKeyKeepsJapaneseTitlesAsAliases(t *testing.T) {
+	got, ok := FindKey("終のステラ DL版")
+	if !ok {
+		t.Fatal("expected Japanese title alias")
+	}
+	if got.Name != "Tsui no Stella - Version numérique" {
+		t.Fatalf("name = %q", got.Name)
+	}
+}
+
+func TestHarmoniaProfilesExposeKnownPCKWTF(t *testing.T) {
+	for _, name := range []string{
+		"Harmonia",
+		"Harmonia - Édition physique",
+		"Harmonia - Édition Steam",
+	} {
+		got, ok := DefaultPCKWTF(name)
+		if !ok || got != 0x166 {
+			t.Fatalf("DefaultPCKWTF(%q) = 0x%X, %v", name, uint32(got), ok)
+		}
+	}
+}
+
+func TestDisplayedGameNamesDoNotContainJapaneseScript(t *testing.T) {
+	for _, name := range GameNameList() {
+		for _, r := range name {
+			if unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana) {
+				t.Fatalf("displayed game name still contains Japanese script: %q", name)
+			}
+		}
 	}
 }
 
@@ -53,7 +120,7 @@ func TestFindKeyAcceptsUsefulAliases(t *testing.T) {
 	if !ok {
 		t.Fatal("expected Planetarian key")
 	}
-	if got.Name != "Planetarian HD Steam" {
+	if got.Name != "planetarian HD - Steam" {
 		t.Fatalf("name = %q", got.Name)
 	}
 

@@ -59,7 +59,8 @@ var GameKeys = []GameKey{
 	{"Rewriteオカ研活動記録外伝　後編", [16]byte{0x36, 0x0F, 0xC9, 0x37, 0x2E, 0xBA, 0x09, 0xCF, 0xE4, 0x47, 0xF2, 0x73, 0xA1, 0x52, 0xEC, 0x5D}},
 	{"Rewrite＋", [16]byte{0x36, 0x0F, 0xC9, 0x37, 0x2E, 0xBA, 0x09, 0xDC, 0xE4, 0x0D, 0xF2, 0x00, 0x23, 0xA3, 0x6E, 0x94}},
 	{"Rewrite＋ Steam English Version", [16]byte{0xC0, 0xA1, 0x8A, 0x52, 0xE9, 0x8D, 0x16, 0x22, 0x8B, 0xF7, 0xCE, 0xCC, 0xF8, 0x7A, 0x56, 0xAF}},
-	{"Harmonia", [16]byte{0x7F, 0x0D, 0x88, 0x21, 0x7B, 0xEA, 0x41, 0xF3, 0xAA, 0x03, 0xA7, 0x2F, 0xEB, 0x60, 0xAD, 0x2E}},
+	{"Harmonia - Physical Edition", [16]byte{0x7F, 0x0D, 0x88, 0x21, 0x7B, 0xEA, 0x41, 0xF3, 0xAA, 0x03, 0xA7, 0x2F, 0xEB, 0x60, 0xAD, 0x2E}},
+	{"Harmonia - Steam Edition", [16]byte{0x7F, 0x0D, 0x88, 0x21, 0x7B, 0xEA, 0x41, 0xF3, 0xAA, 0x03, 0xA7, 0x2F, 0xEB, 0x60, 0xAD, 0x2E}},
 	{"Angel Beats! -1st beat-", [16]byte{0x5F, 0x07, 0x8A, 0x2A, 0x66, 0xA7, 0x11, 0xA6, 0x84, 0x6D, 0x9D, 0x46, 0x9F, 0x7A, 0xB9, 0x7E}},
 	{"Summer Pockets", [16]byte{0x7E, 0x23, 0xBA, 0x0A, 0x4B, 0xA8, 0x29, 0x9A, 0xF6, 0x7C, 0xFD, 0x19, 0x88, 0x34, 0xD1, 0x77}},
 	{"Summer Pockets Mobile Version", [16]byte{0xBB, 0x82, 0x0F, 0xE9, 0x31, 0xDC, 0x11, 0xF2, 0x1A, 0xBA, 0xF8, 0x4C, 0xF3, 0x53, 0x6B, 0xD2}},
@@ -122,11 +123,150 @@ var GameKeys = []GameKey{
 	{"Kanon Android", [16]byte{0x57, 0x20, 0xBC, 0x12, 0x57, 0xC0, 0x68, 0xC3, 0x91, 0x39, 0x87, 0x1F, 0xC3, 0x55, 0x95, 0x09}},
 }
 
+// gameKeyDisplayNames garde les identifiants historiques de SiglusTools comme
+// alias de recherche, tout en exposant des titres lisibles dans la CLI et la
+// GUI. Les titres propres sont romanises et les editions sont indiquees en
+// francais. Cela evite de casser les anciennes commandes utilisant le japonais.
+var gameKeyDisplayNames = map[string]string{
+	"神待ちサナちゃん　DL版":               "Kamimachi Sana-chan - Version numérique",
+	"神待ちサナちゃん　PKG版":              "Kamimachi Sana-chan - Édition physique",
+	"円交少女　～陸上部ゆっきーの場合～":          "Enkou Shoujo: Rikujo-bu Yukki no Baai",
+	"円交少女２　～ＪＫアイドル真鈴の場合～":        "Enkou Shoujo 2: JK Idol Marin no Baai",
+	"清楚で真面目な彼女が、最凶ヤリサーに勧誘されたら…？": "Seiso de Majime na Kanojo ga, Saikyou Yarisaa ni Kanyu Sareta...?",
+	"初恋１／１": "Hatsukoi 1/1",
+	"初恋１／１ Memorical Collection Version":   "Hatsukoi 1/1 - Memorical Collection",
+	"星織ユメミライ":                              "Hoshi Ori Yume Mirai",
+	"星織ユメミライ Memorical Collection Version": "Hoshi Ori Yume Mirai - Memorical Collection",
+	"星織ユメミライ　律佳とあなたの１周年記念、いちゃらぶバースデー":      "Hoshi Ori Yume Mirai: Rikka to Anata no 1 Shuunen Kinen, Icha Love Birthday",
+	"星織ユメミライ Perfect Edition":              "Hoshi Ori Yume Mirai - Perfect Edition",
+	"銀色、遥か":                                "Gin'iro, Haruka",
+	"銀色、遥か Memorical Collection Version":   "Gin'iro, Haruka - Memorical Collection",
+	"月の彼方で逢いましょう　体験版":                      "Tsuki no Kanata de Aimashou - Démo",
+	"月の彼方で逢いましょう":                          "Tsuki no Kanata de Aimashou",
+	"月の彼方で逢いましょうSSR 体験版":                   "Tsuki no Kanata de Aimashou SSR - Démo",
+	"月の彼方で逢いましょうSSR DL版":                   "Tsuki no Kanata de Aimashou SSR - Version numérique",
+	"月の彼方で逢いましょうSSR PKG版":                  "Tsuki no Kanata de Aimashou SSR - Édition physique",
+	"AIR Android Version":                  "AIR - Version Android",
+	"Kanon Android Version":                "Kanon - Version Android",
+	"Rewriteオカ研活動記録外伝　前編":                  "Rewrite: Chroniques du club de recherche occulte - Partie 1",
+	"Rewriteオカ研活動記録外伝　後編":                  "Rewrite: Chroniques du club de recherche occulte - Partie 2",
+	"Rewrite＋":                             "Rewrite+",
+	"Rewrite＋ Steam English Version":       "Rewrite+ - Steam anglais",
+	"Harmonia - Physical Edition":          "Harmonia - Édition physique",
+	"Harmonia - Steam Edition":             "Harmonia - Édition Steam",
+	"Summer Pockets Mobile Version":        "Summer Pockets - Version mobile",
+	"Summer Pockets Steam English Version": "Summer Pockets - Steam anglais",
+	"Summer Pockets REFLECTION BLUE DL版":   "Summer Pockets REFLECTION BLUE - Version numérique",
+	"Summer Pockets REFLECTION BLUE PKG版":  "Summer Pockets REFLECTION BLUE - Édition physique",
+	"CLANNAD Steam Chinese Version":        "CLANNAD - Steam chinois",
+	"LOOPERS 体験版":                          "LOOPERS - Démo",
+	"LOOPERS DL版":                          "LOOPERS - Version numérique",
+	"LOOPERS Mobile Version":               "LOOPERS - Version mobile",
+	"LUNARiA 体験版":                          "LUNARiA - Démo",
+	"LUNARiA DL版":                          "LUNARiA - Version numérique",
+	"LUNARiA PKG版":                         "LUNARiA - Édition physique",
+	"LUNARiA Mobile Version":               "LUNARiA - Version mobile",
+	"終のステラ 体験版":                            "Tsui no Stella - Démo",
+	"終のステラ DL版":                            "Tsui no Stella - Version numérique",
+	"ゆめいろアルエット！":                           "Yumeiro Alouette!",
+	"ましろサマー":                               "Mashiro Summer",
+	"ノーブルリージュ！":                            "Noble Riege!",
+	"キサラギGOLD★STAR":                        "Kisaragi GOLD STAR",
+	"はつゆきさくら":                              "Hatsuyuki Sakura",
+	"カルマルカ＊サークル":                           "Karumaruka Circle",
+	"花咲ワークスプリング！":                          "Hanasaki Work Spring!",
+	"フローラル·フローラブ":                          "Floral Flowlove",
+	"金色ラブリッチェ":                             "Kinkoi: Golden Loveriche",
+	"歪んだ嘘の恋とレッテル":                          "Yuganda Uso no Koi to Label",
+	"星逢のプリズムギア":                            "Hoshiai no Prism Gear",
+	"地味っ子むちむち委員長とドスケベ調教性活":                 "Jimikko Muchimuchi Iinchou to Dosukebe Choukyou Seikatsu",
+	"勇者と踊れ【体験版】":                           "Yuusha to Odore! - Démo",
+	"勇者と踊れ！":                               "Yuusha to Odore!",
+	"LOVE・デスティネーション【体験版】":                  "LOVE Destination - Démo",
+	"LOVE・デスティネーション":                       "LOVE Destination",
+	"アインシュタインより愛を込めて【体験版】":                 "Avec amour, d'Einstein - Démo",
+	"アインシュタインより愛を込めて":                      "Avec amour, d'Einstein",
+	"アインシュタインより愛を込めて APOLLOCRISIS":         "Avec amour, d'Einstein - APOLLOCRISIS",
+	"妹サポ": "Imouto Support",
+	"痴漢専用車両～未発達な身体のテニス少女・蛍～【Android版】":   "Chikan Senyou Sharyou: Mihattatsu na Karada no Tennis Shoujo Hotaru - Version Android",
+	"聖娼女～気高きご令嬢・紫苑～【Android版】":           "Seishoujo: Kedakaki Goreijou Shion - Version Android",
+	"聖娼女～現役アイドル・彩葉～【Android版】":           "Seishoujo: Geneki Idol Iroha - Version Android",
+	"聖娼女～優しき女子校生・優莉～【Android版】":          "Seishoujo: Yasashiki Joshikousei Yuuri - Version Android",
+	"聖娼女～バレー部のエース・翼～【Android版】":          "Seishoujo: Volley-bu no Ace Tsubasa - Version Android",
+	"聖娼女～人妻女教師・涼香～【Android版】":            "Seishoujo: Hitozuma Onna Kyoushi Ryouka - Version Android",
+	"キミベタ～キミをベタベタにさせてあげる～【Android版】":     "KimiBeta: Kimi wo Betabeta ni Sasete Ageru - Version Android",
+	"しゅきしゅきだいしゅき！！【Android版】":            "Shuki Shuki Daisuki!! - Version Android",
+	"沙耶の唄【Android版】":                     "Saya no Uta - Version Android",
+	"メアメアメアＳＰ【Android版】":                 "MareMareMare SP - Version Android",
+	"彼女たちの流儀【Android版】":                  "Kanojotachi no Ryuugi - Version Android",
+	"Rewrite+ Steam English":             "Rewrite+ - Steam anglais",
+	"Summer Pockets Steam English":       "Summer Pockets - Steam anglais",
+	"Summer Pockets REFLECTION BLUE DL":  "Summer Pockets REFLECTION BLUE - Version numérique",
+	"Summer Pockets REFLECTION BLUE PKG": "Summer Pockets REFLECTION BLUE - Édition physique",
+	"CLANNAD Steam Chinese":              "CLANNAD - Steam chinois",
+	"Planetarian HD Steam":               "planetarian HD - Steam",
+	"LOOPERS DL":                         "LOOPERS - Version numérique",
+	"LUNARiA DL":                         "LUNARiA - Version numérique",
+	"LUNARiA PKG":                        "LUNARiA - Édition physique",
+	"AIR Android":                        "AIR - Version Android",
+	"Kanon Android":                      "Kanon - Version Android",
+}
+
+func displayGameKeyName(name string) string {
+	if display, ok := gameKeyDisplayNames[name]; ok {
+		return display
+	}
+	return name
+}
+
+func presentedGameKey(gk GameKey) GameKey {
+	gk.Name = displayGameKeyName(gk.Name)
+	return gk
+}
+
+// defaultPCKWTF contient uniquement les valeurs confirmees sur les PCK
+// d'origine. Les deux editions de Harmonia partagent 0x166, meme si leurs PCK
+// contiennent respectivement 33 et 35 scripts.
+var defaultPCKWTF = map[string]int32{
+	"Harmonia - Physical Edition": 0x166,
+	"Harmonia - Steam Edition":    0x166,
+}
+
+var gameKeyAliases = map[string]string{
+	"Harmonia":                  "Harmonia - Physical Edition",
+	"Harmonia physique":         "Harmonia - Physical Edition",
+	"Harmonia physical":         "Harmonia - Physical Edition",
+	"Harmonia physical edition": "Harmonia - Physical Edition",
+	"Harmonia Steam":            "Harmonia - Steam Edition",
+	"Harmonia Steam edition":    "Harmonia - Steam Edition",
+}
+
+// DefaultPCKWTF retourne le WTF connu d'un profil de jeu. Tous les alias
+// acceptes par FindKey, y compris le simple "Harmonia", sont pris en charge.
+func DefaultPCKWTF(name string) (int32, bool) {
+	gk, ok := FindKey(name)
+	if !ok {
+		return 0, false
+	}
+	for rawName, value := range defaultPCKWTF {
+		if displayGameKeyName(rawName) == gk.Name {
+			return value, true
+		}
+	}
+	return 0, false
+}
+
 // FindKey retourne une clé hexadécimale directe ou la clé d'un jeu par son nom.
 func FindKey(name string) (GameKey, bool) {
 	name = strings.TrimSpace(name)
 	if key, ok := ParseHexGameKey(name); ok {
 		return GameKey{Name: "custom hex key", Key: key}, true
+	}
+	for alias, canonical := range gameKeyAliases {
+		if normalizeGameKeyName(alias) == normalizeGameKeyName(name) {
+			name = canonical
+			break
+		}
 	}
 
 	nameNorm := normalizeGameKeyName(name)
@@ -137,16 +277,21 @@ func FindKey(name string) (GameKey, bool) {
 
 	for _, gk := range GameKeys {
 		keyNorm := normalizeGameKeyName(gk.Name)
-		if keyNorm == nameNorm || compactGameKeyName(keyNorm) == nameCompact {
-			return gk, true
+		displayNorm := normalizeGameKeyName(displayGameKeyName(gk.Name))
+		if keyNorm == nameNorm || compactGameKeyName(keyNorm) == nameCompact ||
+			displayNorm == nameNorm || compactGameKeyName(displayNorm) == nameCompact {
+			return presentedGameKey(gk), true
 		}
 	}
 
 	for _, gk := range GameKeys {
 		keyNorm := normalizeGameKeyName(gk.Name)
 		keyCompact := compactGameKeyName(keyNorm)
-		if strings.Contains(keyNorm, nameNorm) || strings.Contains(keyCompact, nameCompact) {
-			return gk, true
+		displayNorm := normalizeGameKeyName(displayGameKeyName(gk.Name))
+		displayCompact := compactGameKeyName(displayNorm)
+		if strings.Contains(keyNorm, nameNorm) || strings.Contains(keyCompact, nameCompact) ||
+			strings.Contains(displayNorm, nameNorm) || strings.Contains(displayCompact, nameCompact) {
+			return presentedGameKey(gk), true
 		}
 	}
 	return GameKey{}, false
@@ -155,9 +300,20 @@ func FindKey(name string) (GameKey, bool) {
 func normalizeGameKeyName(name string) string {
 	replacer := strings.NewReplacer(
 		"　", " ",
+		"-", " ",
+		"—", " ",
 		"＋", "+",
 		"（", "(",
 		"）", ")",
+		"à", "a",
+		"â", "a",
+		"é", "e",
+		"è", "e",
+		"ê", "e",
+		"î", "i",
+		"ô", "o",
+		"ù", "u",
+		"û", "u",
 	)
 	return strings.Join(strings.Fields(strings.ToLower(replacer.Replace(name))), " ")
 }
