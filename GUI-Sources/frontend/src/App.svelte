@@ -421,6 +421,7 @@
   let siglusSSTsv = '';
   let siglusSSOutput = '';
   let siglusSSCopyText = true;
+  let siglusSSSingleLine = false;
   let siglusSSFilterMode = 'smart';
   let siglusSSFormat = 'txt';
   let siglusSSSingleXlsx = false;
@@ -1460,8 +1461,8 @@
   function startSiglusSceneExtract() { run(() => SiglusSceneExtract(siglusScenePck, siglusGameName, siglusSceneOutputDir)); }
   function startSiglusSceneRebuild() { run(() => SiglusSceneRebuild(siglusSceneInputDir, siglusGameName, siglusSceneWtf, siglusSceneOutputPck, siglusCompressionLevel, siglusFakeCompression)); }
   function startSiglusSSDump() {
-    if (siglusSSBatch) run(() => SiglusSSDumpAll(siglusSSInput, siglusSSTsv, siglusSSCopyText, siglusSSFilterMode, siglusSSFormat, siglusSSSingleXlsx));
-    else run(() => SiglusSSDump(siglusSSInput, siglusSSTsv, siglusSSCopyText, siglusSSFilterMode, siglusSSFormat));
+    if (siglusSSBatch) run(() => SiglusSSDumpAll(siglusSSInput, siglusSSTsv, siglusSSCopyText, siglusSSSingleLine, siglusSSFilterMode, siglusSSFormat, siglusSSSingleXlsx));
+    else run(() => SiglusSSDump(siglusSSInput, siglusSSTsv, siglusSSCopyText, siglusSSSingleLine, siglusSSFilterMode, siglusSSFormat));
   }
   function startSiglusSSInject() {
     if (siglusSSBatch) run(() => SiglusSSInjectAll(siglusSSInput, siglusSSTsv, siglusSSOutput));
@@ -1591,7 +1592,7 @@
           <div class="form-title">Dump SS text</div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSBatch} on:change={toggleSiglusSSBatch} /> Batch mode</label></div></div>
           <div class="form-group"><label>{siglusSSBatch ? 'Dossier .ss :' : 'Fichier .ss :'}</label><div class="form-row"><input type="text" bind:value={siglusSSInput} readonly /><button class="btn" on:click={browseSiglusSSInput}>Select</button></div></div>
-          <div class="form-group"><label>Filtre :</label><div class="form-row"><select bind:value={siglusSSFilterMode}><option value="smart">Smart filter</option><option value="all">Export all text</option><option value="full">Full-width only</option></select><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSCopyText} /> Copy text</label></div></div>
+          <div class="form-group"><label>Filtre :</label><div class="form-row"><select bind:value={siglusSSFilterMode}><option value="smart">Smart filter</option><option value="all">Export all text</option><option value="full">Full-width only</option></select><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSCopyText} /> Copy text</label>{#if siglusSSFormat === 'txt'}<label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSSingleLine} /> Une seule ligne</label>{/if}</div>{#if siglusSSFormat === 'txt' && siglusSSSingleLine}<div class="form-hint">Écrit uniquement le slot ●, directement éditable et réinjectable. L'option Copy text est alors implicite.</div>{/if}</div>
           <div class="form-group"><label>Format :</label><div class="form-row"><select bind:value={siglusSSFormat} on:change={() => siglusSSTsv = ''}><option value="txt">TXT Siglus Tools</option><option value="xlsx">XLSX</option></select>{#if siglusSSBatch && siglusSSFormat === 'xlsx'}<label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSSingleXlsx} on:change={() => siglusSSTsv = ''} /> Single workbook</label>{/if}</div></div>
           <div class="form-group"><label>{siglusSSFormat === 'xlsx' ? (siglusSSBatch && !siglusSSSingleXlsx ? 'Dossier Excel :' : 'Classeur Excel :') : (siglusSSBatch ? 'Dossier texte :' : 'Texte de sortie :')}</label><div class="form-row"><input type="text" bind:value={siglusSSTsv} readonly /><button class="btn" on:click={browseSiglusSSTsv}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSSDump} disabled={!siglusSSInput || !siglusSSTsv}>Dump</button>{/if}</div>

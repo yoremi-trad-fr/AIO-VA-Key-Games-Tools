@@ -19,6 +19,9 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 - Le simple alias `Harmonia` reste accepte et selectionne l'edition physique.
 - La liste affiche des titres romanises et des libelles d'edition en francais ;
   les anciens titres japonais restent acceptes dans les commandes.
+- Le dump TXT propose un mode `Une seule ligne` : il conserve uniquement le
+  slot traduction `●`, afin d'eviter la copie source/traduction en double tout
+  en restant directement compatible avec la reinjection Siglus.
 
 ## Nouveautes RLdev integrees
 

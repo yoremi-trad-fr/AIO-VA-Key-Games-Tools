@@ -2497,10 +2497,13 @@ func (a *App) SiglusSceneRebuild(inputDir, gameName, wtfVal, outputPck string, c
 	return a.failIf(a.runTool("siglustest", args...))
 }
 
-func siglusSSDumpArgs(copyText bool, filterMode, outputFormat string, singleXlsx bool) []string {
+func siglusSSDumpArgs(copyText, singleLine bool, filterMode, outputFormat string, singleXlsx bool) []string {
 	var args []string
 	if copyText {
 		args = append(args, "-d")
+	}
+	if singleLine && strings.EqualFold(strings.TrimSpace(outputFormat), "txt") {
+		args = append(args, "--single-line")
 	}
 	switch strings.ToLower(strings.TrimSpace(filterMode)) {
 	case "all":
@@ -2517,7 +2520,7 @@ func siglusSSDumpArgs(copyText bool, filterMode, outputFormat string, singleXlsx
 	return args
 }
 
-func (a *App) SiglusSSDump(ssFile, outputText string, copyText bool, filterMode, outputFormat string) string {
+func (a *App) SiglusSSDump(ssFile, outputText string, copyText, singleLine bool, filterMode, outputFormat string) string {
 	if err := required("fichier .ss", ssFile); err != nil {
 		return a.failIf(err)
 	}
@@ -2527,11 +2530,11 @@ func (a *App) SiglusSSDump(ssFile, outputText string, copyText bool, filterMode,
 	closeLog := a.startLogFile(outputDirForFile(outputText), "siglus-ss-dump")
 	defer closeLog()
 	args := []string{"dump", ssFile, outputText}
-	args = append(args, siglusSSDumpArgs(copyText, filterMode, outputFormat, false)...)
+	args = append(args, siglusSSDumpArgs(copyText, singleLine, filterMode, outputFormat, false)...)
 	return a.failIf(a.runTool("siglustest", args...))
 }
 
-func (a *App) SiglusSSDumpAll(ssDir, outputDir string, copyText bool, filterMode, outputFormat string, singleXlsx bool) string {
+func (a *App) SiglusSSDumpAll(ssDir, outputDir string, copyText, singleLine bool, filterMode, outputFormat string, singleXlsx bool) string {
 	if err := required("dossier .ss", ssDir); err != nil {
 		return a.failIf(err)
 	}
@@ -2545,7 +2548,7 @@ func (a *App) SiglusSSDumpAll(ssDir, outputDir string, copyText bool, filterMode
 	closeLog := a.startLogFile(logDir, "siglus-ss-dumpall")
 	defer closeLog()
 	args := []string{"dumpall", ssDir, outputDir}
-	args = append(args, siglusSSDumpArgs(copyText, filterMode, outputFormat, singleXlsx)...)
+	args = append(args, siglusSSDumpArgs(copyText, singleLine, filterMode, outputFormat, singleXlsx)...)
 	return a.failIf(a.runTool("siglustest", args...))
 }
 

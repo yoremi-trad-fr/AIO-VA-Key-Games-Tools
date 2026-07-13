@@ -162,9 +162,9 @@ export function SiglusPNGVideo(arg1:string,arg2:string,arg3:boolean,arg4:string)
 
 export function SiglusPngToG00(arg1:string,arg2:string,arg3:string,arg4:string,arg5:boolean):Promise<string>;
 
-export function SiglusSSDump(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string):Promise<string>;
+export function SiglusSSDump(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:string,arg6:string):Promise<string>;
 
-export function SiglusSSDumpAll(arg1:string,arg2:string,arg3:boolean,arg4:string,arg5:string,arg6:boolean):Promise<string>;
+export function SiglusSSDumpAll(arg1:string,arg2:string,arg3:boolean,arg4:boolean,arg5:string,arg6:string,arg7:boolean):Promise<string>;
 
 export function SiglusSSInject(arg1:string,arg2:string,arg3:string):Promise<string>;
 

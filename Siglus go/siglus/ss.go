@@ -58,6 +58,7 @@ type SSDumpOptions struct {
 	CopyText      bool
 	ExportAllText bool
 	FullWidthOnly bool
+	SingleLine    bool
 }
 
 // DumpSS extrait les chaînes de texte d'un fichier .ss
@@ -167,6 +168,12 @@ func FormatSSTextDump(lines []SSLine, opts SSDumpOptions) string {
 	var sb strings.Builder
 	for _, l := range lines {
 		if !shouldExportSSLine(l, opts) {
+			continue
+		}
+		if opts.SingleLine {
+			// Keep the translation marker so this compact dump can be edited and
+			// passed directly to InjectSS without a conversion step.
+			fmt.Fprintf(&sb, "●%010d●%s\r\n", l.Index, l.Text)
 			continue
 		}
 		fmt.Fprintf(&sb, "○%010d○%s\r\n", l.Index, l.Text)

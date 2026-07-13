@@ -70,7 +70,7 @@ func main() {
 	// ─── SS Dump (un fichier) ───────────────────────────────────
 	case "dump":
 		if len(os.Args) < 4 {
-			fmt.Println("usage: siglustest dump <file.ss> <output.txt|output.xlsx> [-d] [-a|-w] [-x]")
+			fmt.Println("usage: siglustest dump <file.ss> <output.txt|output.xlsx> [-d] [-a|-w] [-x] [--single-line]")
 			return
 		}
 		opts := parseSSDumpOptions(os.Args[4:])
@@ -89,7 +89,7 @@ func main() {
 	// ─── SS Dump (dossier entier) ───────────────────────────────
 	case "dumpall":
 		if len(os.Args) < 4 {
-			fmt.Println("usage: siglustest dumpall <ss_dir> <text_output_dir|output.xlsx> [-d] [-a|-w] [-x [-s]]")
+			fmt.Println("usage: siglustest dumpall <ss_dir> <text_output_dir|output.xlsx> [-d] [-a|-w] [-x [-s]] [--single-line]")
 			return
 		}
 		opts := parseSSDumpOptions(os.Args[4:])
@@ -485,6 +485,7 @@ func parseSSDumpOptions(args []string) siglus.SSDumpOptions {
 		CopyText:      hasOption(args, "-d", "--copy"),
 		ExportAllText: hasOption(args, "-a", "--all"),
 		FullWidthOnly: hasOption(args, "-w", "--full-width"),
+		SingleLine:    hasOption(args, "--single-line"),
 	}
 }
 
@@ -498,7 +499,7 @@ func printUsage() {
 	fmt.Println("SS text operations:")
 	fmt.Println("  dump    <file.ss> <output.txt|xlsx>                Dump text from one .ss")
 	fmt.Println("  dumpall <ss_dir> <text_dir|xlsx>                   Dump all .ss in a folder")
-	fmt.Println("          options: -d copy, -a all, -w full-width, -x xlsx, -s single xlsx")
+	fmt.Println("          options: -d copy, -a all, -w full-width, -x xlsx, -s single xlsx, --single-line compact TXT")
 	fmt.Println("  inject  <orig.ss> <translated.txt|xlsx> <output.ss> Inject translation into .ss")
 	fmt.Println("  injectall <ss_dir> <text_or_xlsx_dir> <output_dir> Inject all text into .ss files")
 	fmt.Println()

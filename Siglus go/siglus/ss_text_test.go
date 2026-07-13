@@ -24,6 +24,31 @@ func TestFormatSSTextDumpMatchesSiglusToolsStyle(t *testing.T) {
 	}
 }
 
+func TestFormatSSTextDumpSingleLineStaysInjectable(t *testing.T) {
+	lines := []SSLine{
+		{Index: 3, Text: "始まりは無機質な電子音だった。"},
+		{Index: 4, Text: "It began with an unnatural beep."},
+	}
+
+	got := FormatSSTextDump(lines, SSDumpOptions{CopyText: true, SingleLine: true})
+	want := "●0000000003●始まりは無機質な電子音だった。\r\n"
+	if got != want {
+		t.Fatalf("unexpected single-line dump:\n%q", got)
+	}
+
+	path := filepath.Join(t.TempDir(), "sample.ss.txt")
+	if err := os.WriteFile(path, []byte(got), 0644); err != nil {
+		t.Fatalf("write text: %v", err)
+	}
+	translations, err := ReadSSTranslations(path)
+	if err != nil {
+		t.Fatalf("read translations: %v", err)
+	}
+	if translations[3] != lines[0].Text {
+		t.Fatalf("index 3 = %q, want %q", translations[3], lines[0].Text)
+	}
+}
+
 func TestReadSSTranslationsSupportsSiglusToolsText(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sample.ss.txt")
 	text := "○0000000003○原文\r\n●0000000003●Traduction\r\n\r\n" +

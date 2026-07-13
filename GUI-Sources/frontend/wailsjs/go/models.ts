@@ -1,13 +1,13 @@
 export namespace main {
-
+	
 	export class DialogueFormatInfo {
 	    format: string;
 	    maxCols: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new DialogueFormatInfo(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.format = source["format"];
@@ -19,11 +19,11 @@ export namespace main {
 	    opcodeFile: string;
 	    pluginFile: string;
 	    gameFlag: string;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new GamePreset(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.name = source["name"];
@@ -37,11 +37,11 @@ export namespace main {
 	    suggestedFr: string;
 	    games: string[];
 	    count: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LucaMenuCommonRow(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.source = source["source"];
@@ -75,11 +75,11 @@ export namespace main {
 	    safeAuto: boolean;
 	    risk: string;
 	    include: boolean;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LucaMenuEntry(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rawOffset = source["rawOffset"];
@@ -117,11 +117,11 @@ export namespace main {
 	    encoding: string;
 	    include: boolean;
 	    budget: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LucaMenuPatchEdit(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.rawOffset = source["rawOffset"];
@@ -146,11 +146,11 @@ export namespace main {
 	    preset: string;
 	    customPatch: string;
 	    entries: LucaMenuPatchEdit[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LucaMenuGenerateRequest(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.profileId = source["profileId"];
@@ -165,7 +165,7 @@ export namespace main {
 	        this.customPatch = source["customPatch"];
 	        this.entries = this.convertValues(source["entries"], LucaMenuPatchEdit);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -202,11 +202,11 @@ export namespace main {
 	    japaneseCount: number;
 	    chineseCount: number;
 	    safeAutoCount: number;
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LucaMenuProfile(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -227,7 +227,7 @@ export namespace main {
 	        this.chineseCount = source["chineseCount"];
 	        this.safeAutoCount = source["safeAutoCount"];
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -250,18 +250,18 @@ export namespace main {
 	    kitDir: string;
 	    profiles: LucaMenuProfile[];
 	    common: LucaMenuCommonRow[];
-
+	
 	    static createFrom(source: any = {}) {
 	        return new LucaMenuInventory(source);
 	    }
-
+	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.kitDir = source["kitDir"];
 	        this.profiles = this.convertValues(source["profiles"], LucaMenuProfile);
 	        this.common = this.convertValues(source["common"], LucaMenuCommonRow);
 	    }
-
+	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
 		    if (!a) {
 		        return a;
@@ -280,6 +280,7 @@ export namespace main {
 		    return a;
 		}
 	}
-
+	
 
 }
+
