@@ -22,6 +22,10 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 - Le dump TXT propose un mode `Une seule ligne` : il conserve uniquement le
   slot traduction `●`, afin d'eviter la copie source/traduction en double tout
   en restant directement compatible avec la reinjection Siglus.
+- Le dump SS exporte par defaut toutes les chaines non vides, y compris les
+  dialogues entierement en anglais. Le mode `Dialogue only` retire uniquement
+  les identifiants techniques connus ; `Japanese only (legacy)` conserve
+  l'ancien filtre non-ASCII.
 
 ## Nouveautes RLdev integrees
 

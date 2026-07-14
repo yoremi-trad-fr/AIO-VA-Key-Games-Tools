@@ -422,7 +422,7 @@
   let siglusSSOutput = '';
   let siglusSSCopyText = true;
   let siglusSSSingleLine = false;
-  let siglusSSFilterMode = 'smart';
+  let siglusSSFilterMode = 'all';
   let siglusSSFormat = 'txt';
   let siglusSSSingleXlsx = false;
   let siglusGameexeDat = '';
@@ -1592,7 +1592,7 @@
           <div class="form-title">Dump SS text</div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSBatch} on:change={toggleSiglusSSBatch} /> Batch mode</label></div></div>
           <div class="form-group"><label>{siglusSSBatch ? 'Dossier .ss :' : 'Fichier .ss :'}</label><div class="form-row"><input type="text" bind:value={siglusSSInput} readonly /><button class="btn" on:click={browseSiglusSSInput}>Select</button></div></div>
-          <div class="form-group"><label>Filtre :</label><div class="form-row"><select bind:value={siglusSSFilterMode}><option value="smart">Smart filter</option><option value="all">Export all text</option><option value="full">Full-width only</option></select><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSCopyText} /> Copy text</label>{#if siglusSSFormat === 'txt'}<label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSSingleLine} /> Une seule ligne</label>{/if}</div>{#if siglusSSFormat === 'txt' && siglusSSSingleLine}<div class="form-hint">Écrit uniquement le slot ●, directement éditable et réinjectable. L'option Copy text est alors implicite.</div>{/if}</div>
+          <div class="form-group"><label>Filtre :</label><div class="form-row"><select bind:value={siglusSSFilterMode}><option value="all">Export all text</option><option value="dialogue">Dialogue only</option><option value="japanese">Japanese only (legacy)</option><option value="full">Full-width only</option></select><label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSCopyText} /> Copy text</label>{#if siglusSSFormat === 'txt'}<label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSSingleLine} /> Une seule ligne</label>{/if}</div>{#if siglusSSFilterMode === 'dialogue'}<div class="form-hint">Retire uniquement les identifiants techniques connus et conserve les dialogues en anglais.</div>{/if}{#if siglusSSFormat === 'txt' && siglusSSSingleLine}<div class="form-hint">Écrit uniquement le slot ●, directement éditable et réinjectable. L'option Copy text est alors implicite.</div>{/if}</div>
           <div class="form-group"><label>Format :</label><div class="form-row"><select bind:value={siglusSSFormat} on:change={() => siglusSSTsv = ''}><option value="txt">TXT Siglus Tools</option><option value="xlsx">XLSX</option></select>{#if siglusSSBatch && siglusSSFormat === 'xlsx'}<label class="checkbox-label"><input type="checkbox" bind:checked={siglusSSSingleXlsx} on:change={() => siglusSSTsv = ''} /> Single workbook</label>{/if}</div></div>
           <div class="form-group"><label>{siglusSSFormat === 'xlsx' ? (siglusSSBatch && !siglusSSSingleXlsx ? 'Dossier Excel :' : 'Classeur Excel :') : (siglusSSBatch ? 'Dossier texte :' : 'Texte de sortie :')}</label><div class="form-row"><input type="text" bind:value={siglusSSTsv} readonly /><button class="btn" on:click={browseSiglusSSTsv}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSSDump} disabled={!siglusSSInput || !siglusSSTsv}>Dump</button>{/if}</div>

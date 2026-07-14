@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf16"
 
 	"github.com/xuri/excelize/v2"
@@ -59,6 +60,8 @@ type SSDumpOptions struct {
 	ExportAllText bool
 	FullWidthOnly bool
 	SingleLine    bool
+	DialogueOnly  bool
+	JapaneseOnly  bool
 }
 
 // DumpSS extrait les chaînes de texte d'un fichier .ss
@@ -525,7 +528,82 @@ func shouldExportSSLine(line SSLine, opts SSDumpOptions) bool {
 	if line.Text == "" {
 		return false
 	}
-	return opts.ExportAllText || shouldDumpSSText(line.Text, opts.FullWidthOnly)
+	if opts.ExportAllText {
+		return true
+	}
+	if opts.DialogueOnly && isSSTechnicalTag(line.Text) {
+		return false
+	}
+	if opts.FullWidthOnly {
+		return shouldDumpSSText(line.Text, true)
+	}
+	if opts.JapaneseOnly {
+		return shouldDumpSSText(line.Text, false)
+	}
+	// Safe default: keep every non-empty string. Filtering must always be an
+	// explicit choice so English dialogue cannot disappear silently.
+	return true
+}
+
+func isSSTechnicalTag(text string) bool {
+	tag := strings.TrimSpace(text)
+	if tag == "" {
+		return false
+	}
+
+	switch strings.ToUpper(tag) {
+	case "CG", "M", "L", "S":
+		return true
+	}
+	switch tag {
+	case "a", "b", "ja", "en", "pg", "dummy", "attack", "tipitipidorothy":
+		return true
+	}
+	if strings.HasPrefix(tag, "_") {
+		return true
+	}
+	if strings.IndexFunc(tag, unicode.IsSpace) >= 0 {
+		return false
+	}
+	if strings.HasPrefix(tag, "$") {
+		return true
+	}
+	if strings.ContainsRune(tag, '_') && isSSTechnicalIdentifier(tag) {
+		return true
+	}
+
+	// Asset and control identifiers normally use a digit, separator or
+	// camel-case suffix (bg_001, BGM01, seClick, ...). Requiring that shape
+	// avoids treating ordinary English words such as "See" or "Sister" as
+	// tags merely because they start with "se" or "si".
+	lower := strings.ToLower(tag)
+	for _, prefix := range []string{"intro", "bgm", "bg", "se", "fg", "ef", "si", "tp", "md", "sp", "sr", "m"} {
+		if !strings.HasPrefix(lower, prefix) {
+			continue
+		}
+		rest := tag[len(prefix):]
+		if rest == "" {
+			return true
+		}
+		first := rest[0]
+		return first >= '0' && first <= '9' ||
+			first >= 'A' && first <= 'Z' ||
+			strings.ContainsRune("_-./\\:@#", rune(first))
+	}
+	return false
+}
+
+func isSSTechnicalIdentifier(text string) bool {
+	for _, r := range text {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+			continue
+		}
+		if strings.ContainsRune("_$-./\\:@#", r) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func countExportableSSLines(lines []SSLine, opts SSDumpOptions) int {

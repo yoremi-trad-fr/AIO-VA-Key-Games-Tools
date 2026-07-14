@@ -2508,6 +2508,10 @@ func siglusSSDumpArgs(copyText, singleLine bool, filterMode, outputFormat string
 	switch strings.ToLower(strings.TrimSpace(filterMode)) {
 	case "all":
 		args = append(args, "-a")
+	case "dialogue", "dialogue-only", "filter-tags", "smart":
+		args = append(args, "--dialogue-only")
+	case "japanese", "japanese-only":
+		args = append(args, "--japanese-only")
 	case "full", "full-width", "fullwidth":
 		args = append(args, "-w")
 	}
