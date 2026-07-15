@@ -606,6 +606,9 @@
     { id: '_s4', label: 'IMAGE', section: true },
     { id: 'image_export', label: 'Image Export' },
     { id: 'image_import', label: 'Image Import' },
+    { id: '_s6', label: 'DIALOGUE', labelFr: 'DIALOGUES', section: true },
+    { id: 'dlg_extract', label: 'Extract Dialogues', labelFr: 'Extraire les dialogues' },
+    { id: 'dlg_import', label: 'Import Dialogues', labelFr: 'Importer les dialogues' },
     { id: '_s5', label: '', section: true },
     { id: 'about', label: 'À propos' },
   ];
@@ -1769,7 +1772,7 @@
           <!-- Dialogue Extract (moved from LuckSystem) -->
           <!-- CONTENT IDENTICAL TO EXISTING dlg_extract BLOCK -->
           <div class="form-title">Extract Dialogues (LuckEngine)</div>
-          <div class="form-hint" style="margin-bottom:10px">Extrait les lignes MESSAGE et LOG_BEGIN des scripts LuckEngine (.txt) vers un fichier TSV.</div>
+          <div class="form-hint" style="margin-bottom:10px">Extrait les lignes MESSAGE, LOG_BEGIN et SELECT des scripts LuckEngine (.txt) vers un fichier TSV.</div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={dlgExtBatch} on:change={toggleDlgExtBatch} /> Batch mode</label></div></div>
           <div class="form-group"><label>{dlgExtBatch ? 'Dossier scripts :' : 'Fichier script :'}</label><div class="form-row"><input type="text" bind:value={dlgExtInput} readonly /><button class="btn" on:click={browseDlgExtInput}>Select</button></div></div>
           <div class="form-group"><label>Colonnes :</label><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={dlgExtLang1} /> 1</label><label class="checkbox-label"><input type="checkbox" bind:checked={dlgExtLang2} /> 2</label><label class="checkbox-label"><input type="checkbox" bind:checked={dlgExtLang3} /> 3</label><label class="checkbox-label"><input type="checkbox" bind:checked={dlgExtLang4} /> 4</label></div></div>
@@ -1777,6 +1780,7 @@
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startDlgExtract} disabled={!dlgExtInput || !dlgExtOutput}>Start Extract</button>{/if}</div>
         {:else if selectedOp === 'dlg_import'}
           <div class="form-title">Import Dialogues (LuckEngine)</div>
+          <div class="form-hint" style="margin-bottom:10px">Réinjecte les lignes MESSAGE, LOG_BEGIN et SELECT traduites depuis les fichiers TSV.</div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={dlgImpBatch} on:change={toggleDlgImpBatch} /> Batch mode</label></div></div>
           <div class="form-group"><label>Colonne cible :</label><div class="form-row"><select bind:value={dlgImpTargetCol}><option value={1}>Lang 1</option><option value={2}>Lang 2</option><option value={3}>Lang 3</option><option value={4}>Lang 4</option></select></div></div>
           <div class="form-group"><label>{dlgImpBatch ? 'Dossier scripts :' : 'Fichier script :'}</label><div class="form-row"><input type="text" bind:value={dlgImpScript} readonly /><button class="btn" on:click={browseDlgImpScript}>Select</button></div></div>
@@ -2040,15 +2044,15 @@
   <div class="content">
     <!-- LEFT SIDEBAR -->
     <div class="sidebar">
-      <div class="sidebar-title">Select option:</div>
+      <div class="sidebar-title">{t('Choisir une option :', 'Select option:')}</div>
       <div class="sidebar-list">
         {#each operations as op}
           {#if lucaMenuDllAvailable || (op.id !== '_s3c' && op.id !== 'luca_menu_dll')}
             {#if op.section}
-              <div class="sidebar-section">{op.label}</div>
+              <div class="sidebar-section">{uiLanguage === 'fr' && op.labelFr ? op.labelFr : op.label}</div>
             {:else}
               <div class="sidebar-item" class:active={selectedOp === op.id} class:disabled={op.disabled} on:click={() => selectOp(op)}>
-                {op.label}
+                {uiLanguage === 'fr' && op.labelFr ? op.labelFr : op.label}
               </div>
             {/if}
           {/if}
@@ -2557,9 +2561,9 @@
 
       <!-- DIALOGUE EXTRACT -->
       {:else if selectedOp === 'dlg_extract'}
-        <div class="form-title">Extract Dialogues</div>
+        <div class="form-title">{t('Extraire les dialogues', 'Extract Dialogues')}</div>
         <div class="form-hint" style="margin-bottom:10px">
-          Extrait les lignes <strong>MESSAGE</strong> et <strong>LOG_BEGIN</strong> des scripts décompilés (.txt) vers un fichier TSV éditable.<br>
+          Extrait les lignes <strong>MESSAGE</strong>, <strong>LOG_BEGIN</strong> et <strong>SELECT</strong> des scripts décompilés (.txt) vers un fichier TSV éditable.<br>
           Les colonnes correspondent aux chaînes entre guillemets dans l'ordre d'apparition. L'attribution des langues varie selon le jeu — vérifiez manuellement.
         </div>
         <div class="form-group">
@@ -2593,10 +2597,10 @@
 
       <!-- DIALOGUE IMPORT -->
       {:else if selectedOp === 'dlg_import'}
-        <div class="form-title">Import Dialogues</div>
+        <div class="form-title">{t('Importer les dialogues', 'Import Dialogues')}</div>
         <div class="form-hint" style="margin-bottom:10px">
           Réinjecte les dialogues traduits (TSV) dans les fichiers scripts (.txt).<br>
-          Le TSV doit avoir été généré par l'extraction ci-dessus. Supporte MESSAGE et LOG_BEGIN.
+          Le TSV doit avoir été généré par l'extraction ci-dessus. Supporte MESSAGE, LOG_BEGIN et SELECT.
         </div>
         <div class="form-group">
           <div class="form-row checkbox-row">
