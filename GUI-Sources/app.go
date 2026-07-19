@@ -2061,6 +2061,7 @@ func (a *App) findKFN() string {
 
 	binDir := a.binDir()
 	candidates = append(candidates,
+		filepath.Join(binDir, "KFN", "reallive.kfn"),
 		filepath.Join(binDir, "lib", "reallive.kfn"),
 		filepath.Join(binDir, "reallive.kfn"),
 	)
@@ -2094,7 +2095,7 @@ func (a *App) DefaultKFN() string {
 }
 
 func (a *App) DefaultBabelRoot() string {
-	var candidates []string
+	candidates := []string{filepath.Join(a.binDir(), "BABEL")}
 	if wd, err := os.Getwd(); err == nil {
 		candidates = append(candidates,
 			filepath.Join(wd, "BABEL"),
@@ -2423,11 +2424,19 @@ func (a *App) runTool(toolName string, args ...string) error {
 	}
 
 	done := make(chan struct{}, 2)
-	streamLines := func(reader io.Reader) {
+	lastStderr := ""
+	var stderrMu sync.Mutex
+	streamLines := func(reader io.Reader, captureStderr bool) {
 		scanner := bufio.NewScanner(reader)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 		for scanner.Scan() {
-			a.log(scanner.Text())
+			line := scanner.Text()
+			a.log(line)
+			if captureStderr && strings.TrimSpace(line) != "" {
+				stderrMu.Lock()
+				lastStderr = strings.TrimSpace(line)
+				stderrMu.Unlock()
+			}
 		}
 		if err := scanner.Err(); err != nil {
 			a.logError(fmt.Sprintf("lecture console: %v", err))
@@ -2435,8 +2444,8 @@ func (a *App) runTool(toolName string, args ...string) error {
 		done <- struct{}{}
 	}
 
-	go streamLines(stdout)
-	go streamLines(stderr)
+	go streamLines(stdout, false)
+	go streamLines(stderr, true)
 
 	<-done
 	<-done
@@ -2447,6 +2456,12 @@ func (a *App) runTool(toolName string, args ...string) error {
 			return fmt.Errorf("operation arretee")
 		}
 		a.logError(fmt.Sprintf("processus termine en erreur: %v", err))
+		stderrMu.Lock()
+		detail := lastStderr
+		stderrMu.Unlock()
+		if detail != "" {
+			return fmt.Errorf("%s", detail)
+		}
 		return err
 	}
 
@@ -3494,12 +3509,12 @@ func (a *App) RldevNwaToAudio(nwaInput, outputDir, audioFormat string, batch boo
 
 func (a *App) RldevDatToJson(datInput, outputDir string, batch bool) string {
 	a.log("========================================")
-	a.log("  RLdev - CGM/TCC vers JSON")
+	a.log("  RLdev - CGM/TCC (CGTABLE/CGTABLE2) vers JSON")
 	a.log("========================================")
 
-	label := "fichier CGM/TCC"
+	label := "fichier CGM/TCC (CGTABLE/CGTABLE2)"
 	if batch {
-		label = "dossier CGM/TCC"
+		label = "dossier CGM/TCC (CGTABLE/CGTABLE2)"
 	}
 	if err := required(label, datInput); err != nil {
 		return a.failIf(err)

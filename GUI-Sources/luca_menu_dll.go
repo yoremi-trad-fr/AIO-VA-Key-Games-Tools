@@ -378,7 +378,7 @@ func (a *App) LucaMenuGenerate(req LucaMenuGenerateRequest) string {
 }
 
 func (a *App) findLucaKitDir() string {
-	var seeds []string
+	seeds := []string{a.binDir()}
 	if a.lucksystem != "" {
 		seeds = append(seeds, filepath.Dir(a.lucksystem))
 	}
@@ -386,7 +386,7 @@ func (a *App) findLucaKitDir() string {
 		seeds = append(seeds, filepath.Dir(exe))
 	}
 	if cwd, err := os.Getwd(); err == nil {
-		seeds = append(seeds, cwd)
+		seeds = append(seeds, cwd, filepath.Join(cwd, "bin"))
 	}
 
 	seen := map[string]bool{}

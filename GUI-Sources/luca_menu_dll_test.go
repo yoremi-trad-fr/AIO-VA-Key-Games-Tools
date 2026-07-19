@@ -29,11 +29,8 @@ func TestFindVisualStudioDevCmd(t *testing.T) {
 
 func testLucaKitDir(t *testing.T) string {
 	t.Helper()
-	for _, name := range lucaKitDirNames {
-		kit := filepath.Join("..", name)
-		if info, err := os.Stat(kit); err == nil && info.IsDir() {
-			return kit
-		}
+	if kit := NewApp().findLucaKitDir(); kit != "" {
+		return kit
 	}
 	t.Fatal("proxy DLL kit folder not found")
 	return ""

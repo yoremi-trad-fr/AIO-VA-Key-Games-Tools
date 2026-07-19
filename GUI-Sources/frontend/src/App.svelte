@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy, tick } from 'svelte';
   import { EventsOn, EventsOff } from '../wailsjs/runtime/runtime.js';
+  import Icon from './Icon.svelte';
   import {
     GetLuckSystemPath,
     SetLuckSystemPath,
@@ -100,6 +101,7 @@
   let running = false;
   let consoleLines = [];
   let consoleEl;
+  let consoleExpanded = false;
   let consoleHeight = 160;
   let consoleResizing = false;
   let consoleResizeStartY = 0;
@@ -478,30 +480,74 @@
   //   3. Compile each translated .org back to .TXT
   //   4. Pack the .TXT files back into a SEEN.txt archive
   const rldevOperations = [
-    { id: '_rs1', label: 'KPRL / RLC', section: true },
-    { id: 'kprl_list',    label: '1 — List SEEN.txt archive' },
-    { id: 'kprl_disasm',  label: '2 — Extract SEEN.txt' },
-    { id: 'rlc_compile',  label: '3 — Compile .org / .ke / .avg' },
-    { id: 'rlc_org_text', label: 'Extract text ORG' },
-    { id: 'kprl_archive', label: '4 — Rebuild SEEN.txt' },
-    { id: 'kprl_extract', label: 'Advanced: extract bytecode' },
-    { id: '_rs3', label: 'IMAGE (G00)', section: true },
-    { id: 'g00_extract', label: 'G00 → PNG' },
-    { id: 'g00_import', label: 'PNG → G00' },
-    { id: '_rs4', label: 'ANIMATION (GAN)', section: true },
-    { id: 'gan_to_xml', label: 'GAN → XML' },
-    { id: 'gan_from_xml', label: 'XML → GAN' },
-    { id: '_rs5', label: 'AUDIO (BGM)', section: true },
-    { id: 'nwa_audio', label: 'NWA → MP3/WAV' },
-    { id: '_rs6', label: 'DAT (CG/TCC)', section: true },
-    { id: 'dat_to_json', label: 'CGM/TCC → JSON' },
-    { id: 'dat_from_json', label: 'JSON → CGM/TCC' },
-    { id: '_rs_save', label: 'SAVE', section: true },
-    { id: 'save_editor', label: 'RealLive save editor' },
-    { id: '_rs7', label: 'BABEL', section: true },
-    { id: 'babel_runtime', label: 'Runtime setup' },
-    { id: 'babel_header', label: 'global.kh helper' },
+    { id: 'kprl_list', label: 'Lister SEEN.txt' },
+    { id: 'kprl_disasm', label: 'Extraire SEEN.txt' },
+    { id: 'rlc_compile', label: 'Compiler les scripts' },
+    { id: 'rlc_org_text', label: 'Extraire texte ORG' },
+    { id: 'kprl_archive', label: 'Reconstruire SEEN.txt' },
+    { id: 'kprl_extract', label: 'Avancé' },
+    { id: 'g00_extract', label: 'G00 vers PNG' },
+    { id: 'g00_import', label: 'PNG vers G00' },
+    { id: 'gan_to_xml', label: 'GAN vers XML' },
+    { id: 'gan_from_xml', label: 'XML vers GAN' },
+    { id: 'nwa_audio', label: 'NWA vers MP3/WAV' },
+    { id: 'dat_to_json', label: 'CGM/TCC vers JSON' },
+    { id: 'dat_from_json', label: 'JSON vers CGM/TCC' },
+    { id: 'save_editor', label: 'Éditeur de sauvegarde' },
+    { id: 'babel_runtime', label: 'Préparer le runtime' },
+    { id: 'babel_header', label: 'Assistant global.kh' }
   ];
+
+  const rldevCategories = [
+    {
+      id: 'scripts', icon: 'scripts', label: 'Scripts',
+      description: 'Lister, extraire, compiler et reconstruire les scripts RealLive.',
+      operations: ['kprl_list', 'kprl_disasm', 'rlc_compile', 'rlc_org_text', 'kprl_archive', 'kprl_extract']
+    },
+    {
+      id: 'images', icon: 'image', label: 'Images',
+      description: 'Convertir les ressources graphiques G00 en PNG éditables et inversement.',
+      operations: ['g00_extract', 'g00_import']
+    },
+    {
+      id: 'animation', icon: 'animation', label: 'Animation',
+      description: 'Inspecter et reconstruire les animations GAN au format XML.',
+      operations: ['gan_to_xml', 'gan_from_xml']
+    },
+    {
+      id: 'audio', icon: 'audio', label: 'Audio',
+      description: 'Convertir les pistes NWA vers des formats audio courants.',
+      operations: ['nwa_audio']
+    },
+    {
+      id: 'data', icon: 'data', label: 'Données',
+      description: 'Convertir les données CGM/TCC, CGTABLE et CGTABLE2 en JSON et les reconstruire.',
+      operations: ['dat_to_json', 'dat_from_json']
+    },
+    {
+      id: 'saves', icon: 'save', label: 'Sauvegardes',
+      description: 'Inspecter, comparer, corriger et reconstruire les sauvegardes RealLive.',
+      operations: ['save_editor']
+    },
+    {
+      id: 'babel', icon: 'babel', label: 'Babel',
+      description: 'Préparer le runtime rlBabel et générer le fichier global.kh.',
+      operations: ['babel_runtime', 'babel_header']
+    }
+  ];
+
+  $: activeRldevCategory = rldevCategories.find((category) => category.operations.includes(rldevSelectedOp)) || rldevCategories[0];
+
+  function rldevCategoryOperations(category) {
+    return category.operations
+      .map((id) => rldevOperations.find((operation) => operation.id === id))
+      .filter(Boolean);
+  }
+
+  function selectRldevCategory(category) {
+    const firstOperation = rldevCategoryOperations(category)[0];
+    if (firstOperation) rldevSelectedOp = firstOperation.id;
+  }
 
   const siglusOperations = [
     { id: '_sg1', label: 'SCENE.PCK', section: true },
@@ -532,6 +578,57 @@
     { id: 'combine_png', label: 'Combine PNG' },
     { id: 'script_repack', label: 'Script Repacker' },
   ];
+
+  const siglusCategories = [
+    {
+      id: 'scene', icon: 'archive', label: 'Scene.pck',
+      description: 'Extraire et reconstruire les archives de scénarios SiglusEngine.',
+      operations: ['scene_extract', 'scene_rebuild']
+    },
+    {
+      id: 'scripts', icon: 'scripts', label: 'Scripts',
+      description: 'Exporter les textes SS pour traduction puis les réinjecter.',
+      operations: ['ss_dump', 'ss_inject', 'script_repack']
+    },
+    {
+      id: 'gameexe', icon: 'settings', label: 'Gameexe',
+      description: 'Déchiffrer, modifier et reconstruire la configuration du jeu.',
+      operations: ['gameexe_extract', 'gameexe_rebuild']
+    },
+    {
+      id: 'dbs', icon: 'data', label: 'DBS',
+      description: 'Convertir les bases DBS en texte ou XLSX et les reconstruire.',
+      operations: ['dbs_extract', 'dbs_rebuild', 'dbs_xlsx', 'dbs_build']
+    },
+    {
+      id: 'mobile', icon: 'mobile', label: 'Mobile',
+      description: 'Extraire et reconstruire les archives PCK des éditions mobiles.',
+      operations: ['mobile_pck_extract', 'mobile_pck_rebuild']
+    },
+    {
+      id: 'video', icon: 'video', label: 'Vidéo',
+      description: 'Convertir les vidéos OMV, OGV et les séquences PNG.',
+      operations: ['omv_cut', 'omv_pack', 'omv2avi', 'omv_png', 'png_video']
+    },
+    {
+      id: 'images', icon: 'image', label: 'Images',
+      description: 'Convertir les images G00 et assembler les séquences PNG.',
+      operations: ['g00_extract', 'g00_import', 'combine_png']
+    }
+  ];
+
+  $: activeSiglusCategory = siglusCategories.find((category) => category.operations.includes(siglusSelectedOp)) || siglusCategories[0];
+
+  function siglusCategoryOperations(category) {
+    return category.operations
+      .map((id) => siglusOperations.find((operation) => operation.id === id))
+      .filter(Boolean);
+  }
+
+  function selectSiglusCategory(category) {
+    const firstOperation = siglusCategoryOperations(category)[0];
+    if (firstOperation) siglusSelectedOp = firstOperation.id;
+  }
 
   const gameIdOptions = [
     { id: 'CFV', title: 'Clannad Full Voice' },
@@ -578,40 +675,94 @@
     }
   ];
 
-  // ===== Operations list =====
+  // ===== LuckSystem navigation =====
   const operations = [
-    { id: '_s1', label: 'SCRIPT', section: true },
-    { id: 'decompile', label: 'Script Decompile' },
-    { id: 'compile', label: 'Script Compile' },
+    { id: 'decompile', label: 'Script Decompile', labelFr: 'Décompiler les scripts' },
+    { id: 'compile', label: 'Script Compile', labelFr: 'Compiler les scripts' },
     { id: 'siglus_luca', label: 'Siglus -> Luca' },
-    { id: '_s2', label: 'PAK (CG)', section: true },
-    { id: 'pak_cg_extract', label: 'CG Extract' },
-    { id: 'pak_cg_replace', label: 'CG Replace' },
-    { id: '_s2v', label: 'PAK (Video)', section: true },
-    { id: 'bgmovie_extract', label: 'BGMOVIE Extract' },
-    { id: '_s2a', label: 'PAK (Audio)', section: true },
-    { id: 'music_extract', label: 'Music Extract' },
-    { id: 'voice_extract', label: 'Voice Extract' },
-    { id: 'audio_convert', label: 'Ogg / MP3 Convert' },
-    { id: '_s2b', label: 'PAK (Font)', section: true },
-    { id: 'pak_font_extract', label: 'Font Extract' },
-    { id: 'pak_font_replace', label: 'Font Replace' },
-    { id: '_s3', label: 'FONT', section: true },
-    { id: 'font_extract', label: 'Font Extract' },
-    { id: 'font_edit', label: 'Font Edit' },
-    { id: '_s3b', label: 'VIET FONT', section: true },
+    { id: 'pak_cg_extract', label: 'CG Extract', labelFr: 'Extraire les CG' },
+    { id: 'pak_cg_replace', label: 'CG Replace', labelFr: 'Remplacer les CG' },
+    { id: 'bgmovie_extract', label: 'BGMOVIE Extract', labelFr: 'Extraire BGMOVIE' },
+    { id: 'music_extract', label: 'Music Extract', labelFr: 'Extraire la musique' },
+    { id: 'voice_extract', label: 'Voice Extract', labelFr: 'Extraire les voix' },
+    { id: 'audio_convert', label: 'Ogg / MP3 Convert', labelFr: 'Convertir Ogg / MP3' },
+    { id: 'pak_font_extract', label: 'Extract Font PAK', labelFr: 'Extraire le PAK police' },
+    { id: 'pak_font_replace', label: 'Rebuild Font PAK', labelFr: 'Reconstruire le PAK police' },
+    { id: 'font_extract', label: 'Export Glyphs', labelFr: 'Exporter les glyphes' },
+    { id: 'font_edit', label: 'Edit Glyphs', labelFr: 'Modifier les glyphes' },
     { id: 'viet_font_patch', label: 'AIR / SG Patch' },
-    { id: '_s3c', label: 'DLL HOOK', section: true },
     { id: 'luca_menu_dll', label: 'Luca Menu DLL' },
-    { id: '_s4', label: 'IMAGE', section: true },
-    { id: 'image_export', label: 'Image Export' },
-    { id: 'image_import', label: 'Image Import' },
-    { id: '_s6', label: 'DIALOGUE', labelFr: 'DIALOGUES', section: true },
+    { id: 'image_export', label: 'Image Export', labelFr: 'Exporter les images' },
+    { id: 'image_import', label: 'Image Import', labelFr: 'Importer les images' },
     { id: 'dlg_extract', label: 'Extract Dialogues', labelFr: 'Extraire les dialogues' },
     { id: 'dlg_import', label: 'Import Dialogues', labelFr: 'Importer les dialogues' },
-    { id: '_s5', label: '', section: true },
-    { id: 'about', label: 'À propos' },
+    { id: 'about', label: 'About', labelFr: 'À propos' }
   ];
+
+  const luckCategories = [
+    {
+      id: 'scripts', icon: 'scripts', label: 'Scripts', labelFr: 'Scripts',
+      description: 'Decompile, translate and rebuild game scripts.',
+      descriptionFr: 'Décompiler, traduire et reconstruire les scripts du jeu.',
+      operations: ['decompile', 'compile', 'siglus_luca']
+    },
+    {
+      id: 'archives', icon: 'archive', label: 'PAK Archives', labelFr: 'Archives PAK',
+      description: 'Extract and rebuild image, video and audio archives.',
+      descriptionFr: 'Extraire et reconstruire les archives d’images, de vidéos et d’audio.',
+      operations: ['pak_cg_extract', 'pak_cg_replace', 'bgmovie_extract', 'music_extract', 'voice_extract', 'audio_convert']
+    },
+    {
+      id: 'fonts', icon: 'font', label: 'Fonts', labelFr: 'Polices',
+      description: 'Inspect, adapt and rebuild fonts for translated languages.',
+      descriptionFr: 'Inspecter, adapter et reconstruire les polices pour les langues traduites.',
+      operations: ['pak_font_extract', 'pak_font_replace', 'font_extract', 'font_edit', 'viet_font_patch']
+    },
+    {
+      id: 'images', icon: 'image', label: 'Images', labelFr: 'Images',
+      description: 'Convert CZ images to editable PNG files and back.',
+      descriptionFr: 'Convertir les images CZ en PNG éditables, puis revenir au format du jeu.',
+      operations: ['image_export', 'image_import']
+    },
+    {
+      id: 'dialogues', icon: 'dialogues', label: 'Dialogues', labelFr: 'Dialogues',
+      description: 'Move cleanly between decompiled scripts and translation TSV files.',
+      descriptionFr: 'Passer simplement des scripts décompilés aux fichiers TSV de traduction.',
+      operations: ['dlg_extract', 'dlg_import']
+    },
+    {
+      id: 'tools', icon: 'tools', label: 'Tools', labelFr: 'Outils',
+      description: 'Specialised workflows and information about this fork.',
+      descriptionFr: 'Retrouver les workflows spécialisés et les informations sur ce fork.',
+      operations: ['luca_menu_dll', 'about']
+    }
+  ];
+
+  $: activeLuckCategory = luckCategories.find((category) => category.operations.includes(selectedOp)) || luckCategories[0];
+
+  function luckCategoryOperations(category) {
+    return category.operations
+      .filter((id) => id !== 'luca_menu_dll' || lucaMenuDllAvailable)
+      .map((id) => operations.find((operation) => operation.id === id))
+      .filter(Boolean);
+  }
+
+  function luckCategoryLabel(category, language = uiLanguage) {
+    return language === 'fr' ? category.labelFr : category.label;
+  }
+
+  function luckCategoryDescription(category, language = uiLanguage) {
+    return language === 'fr' ? category.descriptionFr : category.description;
+  }
+
+  function luckOperationLabel(operation, language = uiLanguage) {
+    return language === 'fr' && operation.labelFr ? operation.labelFr : operation.label;
+  }
+
+  function selectLuckCategory(category) {
+    const firstOperation = luckCategoryOperations(category)[0];
+    if (firstOperation) selectOp(firstOperation);
+  }
 
   // --- Outils divers operations ---
   const outilsOperations = [
@@ -725,7 +876,7 @@
     lsPath = await GetLuckSystemPath();
     lucaMenuDllAvailable = await SupportsLucaMenuDLL();
     if (lsPath) {
-      addLine('LuckSystem 2.3.2 - Yoremi fork v3.30 GUI');
+      addLine('LuckSystem 2.3.2 - Yoremi fork v3.31');
       addLine('Executable: ' + lsPath);
       // Scan data/ folder for game presets
       gamePresets = (await ScanGameData()) || [];
@@ -736,7 +887,7 @@
       addLine('[ERROR] lucksystem.exe not found!');
       addLine('Place lucksystem.exe next to the GUI, or click "Locate" below.');
     }
-    addLine('RLdev 2026 - Go édition v1.3.5');
+    addLine('RLdev 2026 - Go édition v1.3.8');
     addLine('Ready.');
     const kfn = await DefaultKFN();
     if (kfn && !rlKfnFile) {
@@ -883,8 +1034,15 @@
   // ===== Actions =====
   async function run(fn) {
     if (running) return;
+    if (activeView === 'rldev' || activeView === 'lucksystem' || activeView === 'siglus') consoleExpanded = true;
     running = true;
-    try { await fn(); } catch (e) { addLine('[ERROR] ' + e); }
+    try {
+      const result = await fn();
+      if (typeof result === 'string') {
+        const detail = result.trim();
+        if (detail && detail.toUpperCase() !== 'OK') addLine('[ERROR] ' + detail);
+      }
+    } catch (e) { addLine('[ERROR] ' + e); }
     running = false;
   }
 
@@ -1490,7 +1648,12 @@
   function startSiglusG00Import() { run(() => SiglusPngToG00(siglusPngBatch ? siglusPngDir : siglusPngFile, siglusPngOutputDir, siglusPngXmlPath, siglusG00Format, siglusPngBatch)); }
 </script>
 
-<div id="app">
+<div
+  id="app"
+  class:siglus-app={activeView === 'siglus' || activeView === 'rldev' || activeView === 'lucksystem'}
+  class:rldev-app={activeView === 'rldev'}
+  class:lucksystem-app={activeView === 'lucksystem'}
+>
   <!-- HUB VIEW -->
   {#if activeView === 'hub'}
     <div class="hub-titlebar">
@@ -1505,7 +1668,7 @@
       <div class="hub-grid">
         <button class="hub-card" on:click={() => activeView = 'lucksystem'}>
           <div class="hub-card-title">LuckSystem</div>
-          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.30 GUI</div>
+          <div class="hub-card-ver">2.3.2 · Yoremi Fork v3.31</div>
           <div class="hub-card-desc">Scripts, PAK, fonts, images CZ<br>for LuckEngine games</div>
         </button>
         <button class="hub-card" on:click={() => activeView = 'siglus'}>
@@ -1515,7 +1678,7 @@
         </button>
         <button class="hub-card" on:click={() => activeView = 'rldev'}>
           <div class="hub-card-title">RLdev 2026</div>
-          <div class="hub-card-ver">v1.3 · Go port</div>
+          <div class="hub-card-ver">v1.3.8 · Go port</div>
           <div class="hub-card-desc">SEEN.txt, Kepago/AVG32, G00, NWA<br>DAT, GAN and Babel for RealLive games</div>
         </button>
       </div>
@@ -1538,8 +1701,8 @@
         <div class="about-subtitle">The ultimate toolbox for Visual Art's / Key Games</div>
         <div class="about-desc">
           Suite d'outils intégrée pour le modding des visual novels Key / Visual Art's.<br><br>
-          <strong>LuckSystem v3.30 GUI</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3, alias de fontes PAK et générateur Luca Menu DLL<br>
-          <strong>RLdev 2026 v1.3.5</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, Babel, saves (RealLive)<br>
+          <strong>LuckSystem v3.31</strong> — Scripts, PAK, fonts, images CZ, vidéos MVT, extraction audio Ogg/MP3, alias de fontes PAK et générateur Luca Menu DLL<br>
+          <strong>RLdev 2026 v1.3.8</strong> — SEEN.txt, Kepago, AVG32, G00, GAN, NWA, DAT, CGTABLE2, Babel, saves (RealLive)<br>
           <strong>Siglus Tools</strong> — SiglusEngine, Scene.pck, SS, Gameexe, DBS, mobile PCK, OMV<br><br>
           Développé par <strong>Yoremi</strong> · Wails + Svelte
         </div>
@@ -1549,31 +1712,73 @@
 
   <!-- SIGLUS TOOLS -->
   {:else if activeView === 'siglus'}
-    <div class="titlebar">
-      <span>Siglus Tools 0.61 — Go port</span>
-      <button class="titlebar-back" on:click={() => activeView = 'hub'}>← Retour</button>
-    </div>
-    <div class="content">
-      <div class="sidebar">
-        <div class="sidebar-title">Siglus :</div>
-        <div class="sidebar-list">
-          {#each siglusOperations as op}
-            {#if op.section}
-              <div class="sidebar-section">{op.label}</div>
-            {:else}
-              <div class="sidebar-item" class:active={siglusSelectedOp === op.id} on:click={() => siglusSelectedOp = op.id}>
-                {op.label}
-              </div>
-            {/if}
-          {/each}
+    <header class="app-header">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">SG</div>
+        <div class="brand-copy">
+          <h1>Siglus GO</h1>
+          <p>Boîte à outils SiglusEngine · édition Go</p>
         </div>
       </div>
-      <div class="form-panel">
+      <div class="header-tools">
+        <div class="tool-status" title="Port Go Siglus Tools disponible">
+          <Icon name="check" size={17} />
+          <span>Outils prêts</span>
+        </div>
+        <button type="button" class="btn btn-ghost header-about" on:click={() => activeView = 'about_global'}>
+          <Icon name="info" size={17} /> <span>À propos</span>
+        </button>
+        <button type="button" class="btn btn-ghost header-back" on:click={() => activeView = 'hub'}>
+          <Icon name="arrow-left" size={17} /> <span>Accueil</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="category-nav" aria-label="Catégories Siglus GO">
+      {#each siglusCategories as category}
+        <button
+          type="button"
+          class="category-tab"
+          class:active={activeSiglusCategory.id === category.id}
+          aria-pressed={activeSiglusCategory.id === category.id}
+          on:click={() => selectSiglusCategory(category)}
+        >
+          <Icon name={category.icon} size={18} />
+          <span>{category.label}</span>
+        </button>
+      {/each}
+    </nav>
+
+    <div class="content">
+      <main class="form-panel">
         <datalist id="siglus-game-options">
           {#each siglusGameKeyOptions as gameKey}
             <option value={gameKey}></option>
           {/each}
         </datalist>
+
+        <div class="category-heading">
+          <div>
+            <h2>{activeSiglusCategory.label}</h2>
+            <p>{activeSiglusCategory.description}</p>
+          </div>
+          <span class="version-badge">Siglus Tools · v0.61</span>
+        </div>
+
+        <div class="operation-tabs" role="tablist" aria-label="Opérations disponibles">
+          {#each siglusCategoryOperations(activeSiglusCategory) as op}
+            <button
+              type="button"
+              class="operation-tab"
+              class:active={siglusSelectedOp === op.id}
+              aria-selected={siglusSelectedOp === op.id}
+              role="tab"
+              on:click={() => siglusSelectedOp = op.id}
+            >{op.label}</button>
+          {/each}
+        </div>
+
+        <section class="workflow-panel">
 
         {#if siglusSelectedOp === 'scene_extract'}
           <div class="form-title">Extract Scene.pck</div>
@@ -1587,7 +1792,7 @@
           <div class="form-group"><label>Dossier extrait :</label><div class="form-row"><input type="text" bind:value={siglusSceneInputDir} readonly /><button class="btn" on:click={browseSiglusSceneInputDir}>Select</button></div></div>
           <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
           <div class="form-group"><label>WTF value :</label><div class="form-row"><input type="text" bind:value={siglusSceneWtf} placeholder="auto" /></div></div>
-          <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
+          <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
           <div class="form-group"><label>Scene.pck de sortie :</label><div class="form-row"><input type="text" bind:value={siglusSceneOutputPck} readonly /><button class="btn" on:click={browseSiglusSceneOutputPck}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusSceneRebuild} disabled={!siglusSceneInputDir || !siglusGameName || !siglusSceneWtf || !siglusSceneOutputPck}>Rebuild</button>{/if}</div>
 
@@ -1619,7 +1824,7 @@
           <div class="form-title">Rebuild Gameexe.dat</div>
           <div class="form-group"><label>Gameexe.ini :</label><div class="form-row"><input type="text" bind:value={siglusGameexeIni} readonly /><button class="btn" on:click={browseSiglusGameexeIni}>Select</button></div></div>
           <div class="form-group"><label>Jeu / clé :</label><div class="form-row"><input type="text" bind:value={siglusGameName} list="siglus-game-options" /></div></div>
-          <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label><label class="checkbox-label"><input type="checkbox" bind:checked={siglusGameexeDoubleEncryption} /> Double encryption</label></div></div>
+          <div class="form-group"><label>Compression :</label><div class="form-row"><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label><label class="checkbox-label"><input type="checkbox" bind:checked={siglusGameexeDoubleEncryption} /> Double encryption</label></div></div>
           <div class="form-group"><label>Gameexe.dat de sortie :</label><div class="form-row"><input type="text" bind:value={siglusGameexeOutput} readonly /><button class="btn" on:click={browseSiglusGameexeRebuildOutput}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusGameexeRebuild} disabled={!siglusGameexeIni || !siglusGameName || !siglusGameexeOutput}>Rebuild</button>{/if}</div>
 
@@ -1635,7 +1840,7 @@
           <div class="form-title">Rebuild DBS</div>
           <div class="form-group"><label>.dbs.out :</label><div class="form-row"><input type="text" bind:value={siglusDBSRaw} readonly /><button class="btn" on:click={browseSiglusDBSRaw}>Select</button></div></div>
           <div class="form-group"><label>.dbs.txt :</label><div class="form-row"><input type="text" bind:value={siglusDBSTxt} readonly /><button class="btn" on:click={browseSiglusDBSTxt}>Select</button></div></div>
-          <div class="form-group"><label>Encodage ANSI :</label><div class="form-row"><select bind:value={siglusDBSEncoding}><option value="gbk">GBK</option><option value="shift-jis">Shift-JIS</option></select><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
+          <div class="form-group"><label>Encodage ANSI :</label><div class="form-row"><select bind:value={siglusDBSEncoding}><option value="gbk">GBK</option><option value="shift-jis">Shift-JIS</option></select><input type="number" bind:value={siglusCompressionLevel} min="2" max="17" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
           <div class="form-group"><label>.dbs de sortie :</label><div class="form-row"><input type="text" bind:value={siglusDBSOutput} readonly /><button class="btn" on:click={browseSiglusDBSOutput}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusDBSRebuild} disabled={!siglusDBSRaw || !siglusDBSTxt || !siglusDBSOutput}>Rebuild</button>{/if}</div>
 
@@ -1650,7 +1855,7 @@
           <div class="form-title">Build DBS from XLSX</div>
           <div class="form-group"><label>Dossier XLSX :</label><div class="form-row"><input type="text" bind:value={siglusDBSXlsxDir} readonly /><button class="btn" on:click={browseSiglusDBSXlsxDir}>Select</button></div></div>
           <div class="form-group"><label>Sortie :</label><div class="form-row"><input type="text" bind:value={siglusDBSOutputDir} readonly /><button class="btn" on:click={browseSiglusDBSOutputDir}>Select</button></div></div>
-          <div class="form-group"><label>Format :</label><div class="form-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusDBSUnicodeOutput} /> Unicode</label>{#if !siglusDBSUnicodeOutput}<select bind:value={siglusDBSEncoding}><option value="gbk">GBK</option><option value="shift-jis">Shift-JIS</option></select>{/if}<input type="number" bind:value={siglusCompressionLevel} min="2" max="17" style="width:80px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
+          <div class="form-group"><label>Format :</label><div class="form-row"><label class="checkbox-label"><input type="checkbox" bind:checked={siglusDBSUnicodeOutput} /> Unicode</label>{#if !siglusDBSUnicodeOutput}<select bind:value={siglusDBSEncoding}><option value="gbk">GBK</option><option value="shift-jis">Shift-JIS</option></select>{/if}<input type="number" bind:value={siglusCompressionLevel} min="2" max="17" /><label class="checkbox-label"><input type="checkbox" bind:checked={siglusFakeCompression} /> Fake compression</label></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusDBSBuildFromXLSX} disabled={!siglusDBSXlsxDir || !siglusDBSOutputDir}>Build DBS</button>{/if}</div>
 
         {:else if siglusSelectedOp === 'mobile_pck_extract'}
@@ -1697,8 +1902,8 @@
             <label>Options :</label>
             <div class="form-row checkbox-row">
               <label class="checkbox-label"><input type="checkbox" bind:checked={siglusPNGVideoAlpha} /> Alpha Siglus</label>
-              <span style="min-width:36px;font-size:12px">FPS :</span>
-              <input type="text" bind:value={siglusPNGVideoFPS} placeholder="30" style="width:110px;height:26px;padding:0 6px;border:1px solid #c0c0c0;border-radius:2px" />
+              <span class="fps-label">FPS :</span>
+              <input class="fps-input" type="text" bind:value={siglusPNGVideoFPS} placeholder="30" />
             </div>
           </div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusPNGVideo} disabled={!siglusPNGVideoDir || !siglusPNGVideoOutput}>Encode</button>{/if}</div>
@@ -1743,7 +1948,8 @@
           <div class="form-group"><label>Script de sortie :</label><div class="form-row"><input type="text" bind:value={siglusScriptRepackOutput} readonly /><button class="btn" on:click={browseSiglusScriptRepackOutput}>Select</button></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startSiglusScriptRepack} disabled={!siglusScriptRepackScript || !siglusScriptRepackText || !siglusScriptRepackOutput}>Repack</button>{/if}</div>
         {/if}
-      </div>
+        </section>
+      </main>
     </div>
 
   <!-- OUTILS DIVERS -->
@@ -1796,26 +2002,67 @@
 
   <!-- RLDEV 2026 -->
   {:else if activeView === 'rldev'}
-    <div class="titlebar">
-      <span>RLdev 2026 — v1.3 (Go port)</span>
-      <button class="titlebar-back" on:click={() => activeView = 'hub'}>← Retour</button>
-    </div>
-    <div class="content">
-      <div class="sidebar">
-        <div class="sidebar-title">RLdev 2026 :</div>
-        <div class="sidebar-list">
-          {#each rldevOperations as op}
-            {#if op.section}
-              <div class="sidebar-section">{op.label}</div>
-            {:else}
-              <div class="sidebar-item" class:active={rldevSelectedOp === op.id} on:click={() => rldevSelectedOp = op.id}>
-                {op.label}
-              </div>
-            {/if}
-          {/each}
+    <header class="app-header">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">RL</div>
+        <div class="brand-copy">
+          <h1>RLdev 2026</h1>
+          <p>Boîte à outils RealLive · édition Go</p>
         </div>
       </div>
-      <div class="form-panel">
+      <div class="header-tools">
+        <div class="tool-status" title="Chaîne d’outils RealLive disponible">
+          <Icon name="check" size={17} />
+          <span>Outils prêts</span>
+        </div>
+        <button type="button" class="btn btn-ghost header-about" on:click={() => activeView = 'about_global'}>
+          <Icon name="info" size={17} /> <span>À propos</span>
+        </button>
+        <button type="button" class="btn btn-ghost header-back" on:click={() => activeView = 'hub'}>
+          <Icon name="arrow-left" size={17} /> <span>Accueil</span>
+        </button>
+      </div>
+    </header>
+
+    <nav class="category-nav" aria-label="Catégories RLdev 2026">
+      {#each rldevCategories as category}
+        <button
+          type="button"
+          class="category-tab"
+          class:active={activeRldevCategory.id === category.id}
+          aria-pressed={activeRldevCategory.id === category.id}
+          on:click={() => selectRldevCategory(category)}
+        >
+          <Icon name={category.icon} size={18} />
+          <span>{category.label}</span>
+        </button>
+      {/each}
+    </nav>
+
+    <div class="content">
+      <main class="form-panel">
+        <div class="category-heading">
+          <div>
+            <h2>{activeRldevCategory.label}</h2>
+            <p>{activeRldevCategory.description}</p>
+          </div>
+          <span class="version-badge">Yoremi fork · v1.3.8</span>
+        </div>
+
+        <div class="operation-tabs" role="tablist" aria-label="Opérations disponibles">
+          {#each rldevCategoryOperations(activeRldevCategory) as op}
+            <button
+              type="button"
+              class="operation-tab"
+              class:active={rldevSelectedOp === op.id}
+              aria-selected={rldevSelectedOp === op.id}
+              role="tab"
+              on:click={() => rldevSelectedOp = op.id}
+            >{op.label}</button>
+          {/each}
+        </div>
+
+        <section class="workflow-panel">
         <!-- KPRL EXTRACT (disassemble) -->
         {#if rldevSelectedOp === 'kprl_disasm'}
           <div class="form-title">2 — Extract SEEN.txt</div>
@@ -1951,7 +2198,7 @@
 
         {:else if rldevSelectedOp === 'dat_to_json'}
           <div class="form-title">CGM/TCC → JSON</div>
-          <div class="form-hint" style="margin-bottom:10px">Exporte mode.cgm ou tcdata.tcc vers JSON. TCC expose les courbes RGB ; CGM expose les entrées nom + index quand la table est standard.</div>
+          <div class="form-hint" style="margin-bottom:10px">Exporte mode.cgm ou tcdata.tcc vers JSON. TCC expose les courbes RGB ; CGM préserve les entrées des variantes CGTABLE et CGTABLE2.</div>
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlDatBatch} on:change={toggleDatBatch} /> Batch mode</label></div></div>
           {#if rlDatBatch}
             <div class="form-group"><label>CGM/TCC folder :</label><div class="form-row"><input type="text" bind:value={rlDatDir} readonly /><button class="btn" on:click={browseRlDat}>Select</button></div></div>
@@ -2019,49 +2266,80 @@
           <div class="form-group"><div class="form-row checkbox-row"><label class="checkbox-label"><input type="checkbox" bind:checked={rlBabelGlosses} /> Enable glosses</label></div></div>
           <div class="form-actions">{#if running}<span class="running-indicator"></span> Running...{:else}<button class="btn btn-primary" on:click={startBabelHeader} disabled={!rlOutputDir}>Create global.kh</button>{/if}</div>
         {/if}
-      </div>
+        </section>
+      </main>
     </div>
 
   <!-- LUCKSYSTEM -->
   {:else if activeView === 'lucksystem'}
-  <div class="titlebar">
-    <span>LuckSystem 2.3.2 - Yoremi fork v3.30 GUI</span>
-    <div style="display:flex;align-items:center;gap:10px">
+  <header class="app-header">
+    <div class="brand-block">
+      <div class="brand-mark luck-mark" aria-hidden="true"><Icon name="sparkles" size={26} /></div>
+      <div class="brand-copy">
+        <h1>LuckSystem</h1>
+        <p>VisualArt's / Key · Yoremi fork</p>
+      </div>
+    </div>
+    <div class="header-tools">
+      <button type="button" class="tool-status tool-status-button" on:click={locateLuckSystem} title={t('Cliquer pour modifier le chemin', 'Click to change path', uiLanguage)}>
+        <Icon name={lsPath ? 'check' : 'warning'} size={17} />
+        <span>{lsPath ? t('Moteur détecté', 'Engine detected', uiLanguage) : t('Moteur à localiser', 'Locate engine', uiLanguage)}</span>
+      </button>
       <label class="ui-language">
-        <span>{t('Interface', 'Interface')}</span>
+        <span class="sr-only">{t('Langue de l’interface', 'Interface language', uiLanguage)}</span>
         <select value={uiLanguage} on:change={(e) => setUiLanguage(e.target.value)}>
           <option value="fr">Français</option>
           <option value="en">English</option>
         </select>
       </label>
-      <span class="titlebar-path" on:click={locateLuckSystem} title={t('Cliquer pour modifier', 'Click to change')}>
-        {#if lsPath}📁 {lsPath}{:else}⚠ {t('lucksystem.exe introuvable — cliquer pour le localiser', 'lucksystem.exe not found — click to locate')}{/if}
-      </span>
-      <button class="titlebar-back" on:click={() => activeView = 'hub'}>← {t('Retour', 'Back')}</button>
+      <button type="button" class="btn btn-ghost header-about" on:click={() => selectOp(operations.find((operation) => operation.id === 'about'))}>
+        <Icon name="info" size={17} /> <span>{t('À propos', 'About', uiLanguage)}</span>
+      </button>
+      <button type="button" class="btn btn-ghost header-back" on:click={() => activeView = 'hub'}>
+        <Icon name="arrow-left" size={17} /> <span>{t('Accueil', 'Home', uiLanguage)}</span>
+      </button>
     </div>
-  </div>
+  </header>
+
+  <nav class="category-nav" aria-label={t('Catégories LuckSystem', 'LuckSystem categories', uiLanguage)}>
+    {#each luckCategories as category}
+      <button
+        type="button"
+        class="category-tab"
+        class:active={activeLuckCategory.id === category.id}
+        aria-pressed={activeLuckCategory.id === category.id}
+        on:click={() => selectLuckCategory(category)}
+      >
+        <Icon name={category.icon} size={18} />
+        <span>{luckCategoryLabel(category, uiLanguage)}</span>
+      </button>
+    {/each}
+  </nav>
 
   <div class="content">
-    <!-- LEFT SIDEBAR -->
-    <div class="sidebar">
-      <div class="sidebar-title">{t('Choisir une option :', 'Select option:')}</div>
-      <div class="sidebar-list">
-        {#each operations as op}
-          {#if lucaMenuDllAvailable || (op.id !== '_s3c' && op.id !== 'luca_menu_dll')}
-            {#if op.section}
-              <div class="sidebar-section">{uiLanguage === 'fr' && op.labelFr ? op.labelFr : op.label}</div>
-            {:else}
-              <div class="sidebar-item" class:active={selectedOp === op.id} class:disabled={op.disabled} on:click={() => selectOp(op)}>
-                {uiLanguage === 'fr' && op.labelFr ? op.labelFr : op.label}
-              </div>
-            {/if}
-          {/if}
+    <main class="form-panel">
+      <div class="category-heading">
+        <div>
+          <h2>{luckCategoryLabel(activeLuckCategory, uiLanguage)}</h2>
+          <p>{luckCategoryDescription(activeLuckCategory, uiLanguage)}</p>
+        </div>
+        <span class="version-badge">Yoremi fork · v3.31</span>
+      </div>
+
+      <div class="operation-tabs" role="tablist" aria-label={t('Opérations disponibles', 'Available operations', uiLanguage)}>
+        {#each luckCategoryOperations(activeLuckCategory) as op}
+          <button
+            type="button"
+            class="operation-tab"
+            class:active={selectedOp === op.id}
+            aria-selected={selectedOp === op.id}
+            role="tab"
+            on:click={() => selectOp(op)}
+          >{luckOperationLabel(op, uiLanguage)}</button>
         {/each}
       </div>
-    </div>
 
-    <!-- RIGHT FORM PANEL -->
-    <div class="form-panel">
+      <section class="workflow-panel">
 
       <!-- SCRIPT DECOMPILE -->
       {#if selectedOp === 'decompile'}
@@ -2639,7 +2917,7 @@
         <div class="form-title">À propos</div>
         <div class="about-panel">
           <div class="about-logo">LuckSystem</div>
-          <div class="about-subtitle">Fork · Yoremi-v3.30 GUI</div>
+          <div class="about-subtitle">Fork · Yoremi-v3.31</div>
           <div class="about-desc">
             Interface graphique pour LuckSystem, l'outil de traduction de visual novels Visual Art's / Key.<br>
             Inclut des correctifs CZ (CZ1, CZ4), script, PAK, audio Ogg/MP3, et une interface subprocess.
@@ -2654,41 +2932,83 @@
               <span class="about-link-url">https://github.com/yoremi-trad-fr/LuckSystem-2.3.2-Yoremi-Update</span>
             </div>
           </div>
-          <div class="about-version">v3.30 GUI · Wails + Svelte</div>
+          <div class="about-version">v3.31 · Wails + Svelte</div>
         </div>
       {/if}
-    </div>
+      </section>
+    </main>
   </div>
 
   <!-- CONSOLE (shared by all views) -->
   {/if}
   {#if activeView !== 'hub' && activeView !== 'about_global'}
-  <div class="console-wrapper" class:resizing={consoleResizing}>
-    <div class="console-resizer" class:resizing={consoleResizing} on:mousedown={startConsoleResize}></div>
-    <div class="console-header">
-      <span>Console Output</span>
-      <div style="display:flex;gap:6px;align-items:center">
-        {#if running}
-          <button class="console-stop" on:click={stopProcess}>■ Stop</button>
+    {#if activeView === 'siglus' || activeView === 'rldev' || activeView === 'lucksystem'}
+      <section class="console-wrapper" class:expanded={consoleExpanded}>
+        <div class="console-header">
+          <div class="console-summary">
+            <div class="console-icon"><Icon name="terminal" size={17} /></div>
+            <div>
+              <strong>{activeView === 'lucksystem' ? t('Activité', 'Activity', uiLanguage) : 'Activité'}</strong>
+              <small>{running ? (activeView === 'lucksystem' ? t('Traitement en cours…', 'Task in progress…', uiLanguage) : 'Traitement en cours…') : (activeView === 'lucksystem' ? t('Prêt — aucun traitement en cours', 'Ready — no task running', uiLanguage) : 'Prêt — aucun traitement en cours')}</small>
+            </div>
+          </div>
+          <div class="console-actions">
+            {#if running}
+              <button class="btn console-stop" on:click={stopProcess}><Icon name="stop" size={15} /> {activeView === 'lucksystem' ? t('Arrêter', 'Stop', uiLanguage) : 'Arrêter'}</button>
+            {/if}
+            <button class="btn btn-ghost console-clear" on:click={clearConsole}><Icon name="trash" size={15} /> {activeView === 'lucksystem' ? t('Effacer', 'Clear', uiLanguage) : 'Effacer'}</button>
+            <button type="button" class="btn btn-ghost console-toggle" aria-expanded={consoleExpanded} on:click={() => consoleExpanded = !consoleExpanded}>
+              <Icon name={consoleExpanded ? 'chevron-down' : 'chevron-up'} size={16} />
+              {consoleExpanded ? (activeView === 'lucksystem' ? t('Réduire', 'Collapse', uiLanguage) : 'Réduire') : (activeView === 'lucksystem' ? t('Afficher le journal', 'Show activity log', uiLanguage) : 'Afficher le journal')}
+            </button>
+          </div>
+        </div>
+        {#if consoleExpanded}
+          <div class="console" bind:this={consoleEl} role="textbox" aria-label="Journal d’activité" aria-readonly="true" tabindex="0" on:contextmenu={openConsoleMenu}>
+            {#each consoleLines as line}<div class={line.cls}>{line.text}</div>{/each}
+          </div>
         {/if}
-        <button class="console-clear" on:click={clearConsole}>Clear</button>
-      </div>
-    </div>
-    <div class="console" bind:this={consoleEl} style:height={consoleHeight + 'px'} on:contextmenu={openConsoleMenu}>
-      {#each consoleLines as line}<div class={line.cls}>{line.text}</div>{/each}
-    </div>
-    {#if consoleMenuVisible}
-      <div
-        class="console-context-menu"
-        style={`left:${consoleMenuX}px;top:${consoleMenuY}px`}
-        on:click|stopPropagation
-        on:contextmenu|preventDefault
-      >
-        <button type="button" on:click={copyConsoleSelection}>Copier</button>
-        <button type="button" on:click={copyConsoleAll}>Copier tout</button>
-        <button type="button" on:click={pasteConsoleClipboard}>Coller</button>
+        {#if consoleMenuVisible}
+          <div
+            class="console-context-menu"
+            style={`left:${consoleMenuX}px;top:${consoleMenuY}px`}
+            on:click|stopPropagation
+            on:contextmenu|preventDefault
+          >
+            <button type="button" on:click={copyConsoleSelection}>Copier</button>
+            <button type="button" on:click={copyConsoleAll}>Copier tout</button>
+            <button type="button" on:click={pasteConsoleClipboard}>Coller</button>
+          </div>
+        {/if}
+      </section>
+    {:else}
+      <div class="console-wrapper" class:resizing={consoleResizing}>
+        <div class="console-resizer" class:resizing={consoleResizing} on:mousedown={startConsoleResize}></div>
+        <div class="console-header">
+          <span>Console Output</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            {#if running}
+              <button class="console-stop" on:click={stopProcess}>■ Stop</button>
+            {/if}
+            <button class="console-clear" on:click={clearConsole}>Clear</button>
+          </div>
+        </div>
+        <div class="console" bind:this={consoleEl} style:height={consoleHeight + 'px'} on:contextmenu={openConsoleMenu}>
+          {#each consoleLines as line}<div class={line.cls}>{line.text}</div>{/each}
+        </div>
+        {#if consoleMenuVisible}
+          <div
+            class="console-context-menu"
+            style={`left:${consoleMenuX}px;top:${consoleMenuY}px`}
+            on:click|stopPropagation
+            on:contextmenu|preventDefault
+          >
+            <button type="button" on:click={copyConsoleSelection}>Copier</button>
+            <button type="button" on:click={copyConsoleAll}>Copier tout</button>
+            <button type="button" on:click={pasteConsoleClipboard}>Coller</button>
+          </div>
+        {/if}
       </div>
     {/if}
-  </div>
   {/if}
 </div>

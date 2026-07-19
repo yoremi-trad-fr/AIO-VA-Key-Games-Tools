@@ -6,8 +6,8 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 
 ## Outils integres
 
-- **LuckSystem 2.3.2 - fork Yoremi v3.30** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, bridge Siglus -> Luca, workflows dialogue TSV et generateur Luca Menu DLL.
-- **RLdev2026-Go 1.3.5** : extraction/rebuild `SEEN.TXT`, compilation `.org/.ke/.avg`, G00, GAN, NWA, DAT, Babel, edition/export/import de saves RealLive avec `rlsave`.
+- **LuckSystem 2.3.2 - fork Yoremi v3.31** : scripts, PAK, fontes, images CZ, videos BGMOVIE/MVT, extraction audio MUSIC/VOICE en Ogg/MP3, bridge Siglus -> Luca, workflows dialogue TSV et generateur Luca Menu DLL.
+- **RLdev2026-Go 1.3.8** : extraction/rebuild `SEEN.TXT`, compilation `.org/.ke/.avg`, G00, GAN, NWA, DAT/CGTABLE2, Babel, edition/export/import de saves RealLive avec `rlsave`.
 - **Siglus Tools 0.61 - Go port** : `Scene.pck`, scripts `.ss`, `Gameexe`, DBS, mobile PCK, OMV et conversions annexes.
 
 ## Profils Siglus Harmonia
@@ -27,9 +27,16 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
   les identifiants techniques connus ; `Japanese only (legacy)` conserve
   l'ancien filtre non-ASCII.
 
-## Nouveautes RLdev integrees
+## Nouveautes RLdev 1.3.8 integrees
 
-## Nouveautes LuckSystem 3.30 integrees
+- Interface modernisee avec navigation horizontale par categories, sous-onglets et identite verte.
+- Support des fichiers `CGTABLE2` de CLANNAD Steam via les binaires `vaconv` 1.3.8.
+- Le dernier diagnostic CLI est maintenant affiche dans la GUI en cas d'echec, au lieu du seul `exit status 1`.
+
+## Nouveautes LuckSystem 3.31 integrees
+
+- Interface modernisee avec six categories, sous-onglets contextuels, identite bleue et journal d'activite repliable.
+- References de version et detection de `lucksystem.exe` alignees sur la release 3.31.
 
 - Generateur `Luca Menu DLL` pour AIR, Kanon, Harmonia HD, Loopers et Little Busters! English Edition.
 - Proxy `version.dll` x64 ou `winmm.dll` x86 pour LBEE, avec verification des offsets et du budget des chaines.
@@ -53,7 +60,7 @@ L'application fonctionne comme un wrapper Wails/Go : elle ne remplace pas les ou
 - `Font Edit` expose maintenant le preset arabe et les reglages manuels `Set Y`, `Y offset`, `X offset`, `Advance offset` et `Connector bleed`.
 - `PAK (Font) -> Font Replace` prend en charge le remplacement d'un fichier unique par nom interne exact, utile pour `info30`, `info32` ou `明朝30`.
 
-## Nouveautes RLdev integrees
+## Fonctionnalites RLdev conservees
 
 - Panneau `RealLive save editor` avec Info, Map, Doctor, Diff, Get, Dump, Set, Export texte et Build `.sav`.
 - Profils generiques pour `read.sav`, `save999.sav` et les dwords bas niveau.
@@ -68,11 +75,15 @@ AIO-VA-Key-Games-Tools/
   GUI-Sources/
     bin/
       lucksystem.exe
+      data/
+      proxy dll/
       kprl16.exe
       rlc2026.exe
       vaconv.exe
       rlxml.exe
       rlsave.exe
+      KFN/
+      BABEL/
       ...
     frontend/
     app.go
